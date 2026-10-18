@@ -1,0 +1,4 @@
+interface:
+  display_name: "DataMind Hackathon"
+  short_description: "Build and evaluate DataMind against the PS1 rubric"
+  default_prompt: "Use $datamind-hackathon to advance DataMind toward a winning PS1 submission."
