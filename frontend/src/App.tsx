@@ -23,6 +23,7 @@ import {
   ChevronRight,
   CircleDot,
   Clock,
+  Code2,
   Copy,
   Cpu,
   Database,
@@ -32,6 +33,7 @@ import {
   Fingerprint,
   Layers3,
   LayoutDashboard,
+  LineChart as LineChartIcon,
   Loader2,
   Lock,
   Maximize2,
@@ -48,14 +50,20 @@ import {
   Sparkles,
   Table2,
   Terminal,
+  TrendingUp,
   User,
   X,
   XCircle,
+  Zap,
 } from 'lucide-react'
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -66,11 +74,13 @@ import {
   Answer,
   ChatMessage,
   DatasetMeta,
+  EngineSettings,
   EvalCase,
   EvalResult,
   PipelineStep,
   RunHistoryItem,
   SemanticModelFull,
+  SnowflakeExplainResult,
   Status,
 } from './types'
 
@@ -666,7 +676,7 @@ const initialPipelineEdges: Edge[] = [
 // ============================================================================
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'chat' | 'receipts' | 'models' | 'evals'>('pipeline')
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'chat' | 'receipts' | 'models' | 'evals' | 'studio'>('pipeline')
   const [status, setStatus] = useState<Status | null>(null)
   const [datasets, setDatasets] = useState<DatasetMeta[]>([])
   const [activeDatasetId, setActiveDatasetId] = useState<string>('tpch')
@@ -683,6 +693,34 @@ export default function App() {
   const [inspectedQueryId, setInspectedQueryId] = useState<string | null>(null)
   const [copiedQueryId, setCopiedQueryId] = useState(false)
   const [copiedSql, setCopiedSql] = useState(false)
+
+  // Settings state & modal
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false)
+  const [engineSettings, setEngineSettings] = useState<EngineSettings | null>(null)
+  const [editGemmaTemp, setEditGemmaTemp] = useState(0.0)
+  const [editGemmaModel, setEditGemmaModel] = useState('gemma4:e4b')
+  const [editGemmaTimeout, setEditGemmaTimeout] = useState(300)
+  const [editSnowflakeWh, setEditSnowflakeWh] = useState('DATAMIND_WH')
+  const [editStatementTimeout, setEditStatementTimeout] = useState(60)
+  const [editMaxRows, setEditMaxRows] = useState(100)
+  const [editQueryTag, setEditQueryTag] = useState('datamind:interactive:v0.1')
+  const [settingsSaveMsg, setSettingsSaveMsg] = useState('')
+
+  // Snowflake Studio state
+  const [studioSql, setStudioSql] = useState('SELECT N_NAME, N_REGIONKEY FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1.NATION LIMIT 10')
+  const [studioRunning, setStudioRunning] = useState(false)
+  const [studioResult, setStudioResult] = useState<any | null>(null)
+  const [studioExplainRunning, setStudioExplainRunning] = useState(false)
+  const [studioExplainResult, setStudioExplainResult] = useState<SnowflakeExplainResult | null>(null)
+  const [studioError, setStudioError] = useState('')
+
+  // Visualization Studio state
+  const [chartType, setChartType] = useState<'bar' | 'line' | 'area'>('bar')
+  const [selectedXAxis, setSelectedXAxis] = useState<string>('')
+  const [selectedYAxis, setSelectedYAxis] = useState<string>('')
+
+  // Data Mutation Simulator state
+  const [activeMutationYear, setActiveMutationYear] = useState<number>(1995)
 
   // Stage timeline tracking
   const [stageProgress, setStageProgress] = useState(0)
@@ -766,7 +804,7 @@ metrics:
   )
   const [customError, setCustomError] = useState('')
 
-  // Load backend health, datasets, evals
+  // Load backend health, datasets, settings, evals
   useEffect(() => {
     fetch('/api/health')
       .then((r) => r.json())
@@ -775,6 +813,20 @@ metrics:
         if (data.semantic_model?.id) setActiveDatasetId(data.semantic_model.id)
       })
       .catch(() => setStatus(null))
+
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((data: EngineSettings) => {
+        setEngineSettings(data)
+        setEditGemmaTemp(data.gemma.temperature)
+        setEditGemmaModel(data.gemma.model)
+        setEditGemmaTimeout(data.gemma.timeout)
+        setEditSnowflakeWh(data.snowflake.warehouse)
+        setEditStatementTimeout(data.snowflake.statement_timeout)
+        setEditMaxRows(data.snowflake.max_rows)
+        setEditQueryTag(data.snowflake.query_tag)
+      })
+      .catch(() => {})
 
     fetch('/api/datasets')
       .then((r) => r.json())
@@ -848,7 +900,7 @@ metrics:
             ...n,
             data: {
               status: executionStatus === 'querying' && stageProgress < 50 ? 'active' : answer ? 'done' : 'idle',
-              model: status?.gemma.model || 'gemma4:e4b',
+              model: engineSettings?.gemma.model || status?.gemma.model || 'gemma4:e4b',
               metricsCount: answer?.plan.metrics.length ?? 0,
               dimsCount: answer?.plan.dimensions.length ?? 0,
               onInspect: () => setExpandModalOpen(true),
@@ -870,7 +922,7 @@ metrics:
             data: {
               status: executionStatus === 'querying' && stageProgress >= 50 ? 'computing' : answer ? 'done' : 'idle',
               queryId: answer?.result.query_id,
-              warehouse: status?.snowflake.warehouse || 'DATAMIND_WH',
+              warehouse: engineSettings?.snowflake.warehouse || status?.snowflake.warehouse || 'DATAMIND_WH',
               elapsedMs: answer?.result.elapsed_ms,
               rowsCount: answer?.result.rows.length,
               onInspect: () => openSnowflakeInspector(answer?.result.query_id),
@@ -891,7 +943,38 @@ metrics:
         return n
       })
     )
-  }, [activeDatasetId, answer, datasets, executionStatus, queryText, semanticModel, stageProgress, status, topK])
+  }, [activeDatasetId, answer, datasets, engineSettings, executionStatus, queryText, semanticModel, stageProgress, status, topK])
+
+  // Save Settings handler
+  async function handleSaveSettings(e: FormEvent) {
+    e.preventDefault()
+    setSettingsSaveMsg('Saving…')
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          temperature: editGemmaTemp,
+          model: editGemmaModel,
+          timeout: editGemmaTimeout,
+          warehouse: editSnowflakeWh,
+          statement_timeout: editStatementTimeout,
+          max_rows: editMaxRows,
+          query_tag: editQueryTag,
+        }),
+      })
+      const payload = await res.json()
+      if (res.ok && payload.settings) {
+        setEngineSettings(payload.settings)
+        setSettingsSaveMsg('Settings updated successfully!')
+        setTimeout(() => setSettingsSaveMsg(''), 2500)
+      } else {
+        setSettingsSaveMsg('Failed to update settings.')
+      }
+    } catch {
+      setSettingsSaveMsg('Network error saving settings.')
+    }
+  }
 
   // Switch dataset
   async function handleDatasetSelect(datasetId: string) {
@@ -1024,6 +1107,11 @@ metrics:
       setExecutionStatus('success')
       setAnswer(payload)
 
+      // Update studio SQL with latest compiled query
+      if (payload.query?.sql) {
+        setStudioSql(payload.query.sql)
+      }
+
       // Update chat
       setChatMessages((prev) =>
         prev.map((m) =>
@@ -1112,6 +1200,47 @@ metrics:
     }
   }
 
+  // Run Snowflake EXPLAIN
+  async function runSnowflakeExplain() {
+    setStudioExplainRunning(true)
+    setStudioError('')
+    try {
+      const res = await fetch('/api/snowflake/explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: studioSql }),
+      })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.detail || 'Explain plan failed')
+      setStudioExplainResult(payload)
+    } catch (err: unknown) {
+      setStudioError(err instanceof Error ? err.message : 'Explain failed')
+    } finally {
+      setStudioExplainRunning(false)
+    }
+  }
+
+  // Run Direct Snowflake Query in Studio
+  async function runSnowflakeDirectQuery() {
+    setStudioRunning(true)
+    setStudioError('')
+    setStudioResult(null)
+    try {
+      const res = await fetch('/api/snowflake/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: studioSql }),
+      })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.detail || 'Query execution failed')
+      setStudioResult(payload)
+    } catch (err: unknown) {
+      setStudioError(err instanceof Error ? err.message : 'Execution failed')
+    } finally {
+      setStudioRunning(false)
+    }
+  }
+
   // Evals run test
   async function runEvalTest(ec: EvalCase) {
     setEvalRunning(ec.id)
@@ -1138,6 +1267,14 @@ metrics:
     }
   }
 
+  // Data mutation simulator: switch year
+  function handleMutationYearChange(yr: number) {
+    setActiveMutationYear(yr)
+    const prompt = `Which five customer nations generated the most revenue in ${yr}?`
+    setQueryText(prompt)
+    executePipeline(prompt)
+  }
+
   // Export CSV
   function downloadCsv() {
     if (!answer) return
@@ -1152,17 +1289,32 @@ metrics:
     URL.revokeObjectURL(url)
   }
 
-  // Chart data
-  const chartData = useMemo(() => {
-    if (!answer || answer.result.columns.length < 2 || !answer.result.rows.length) return []
-    const numIdx = answer.result.rows[0]?.findIndex((v) => typeof v === 'number') ?? -1
-    if (numIdx < 0) return []
-    const labelIdx = numIdx === 0 ? 1 : 0
-    return answer.result.rows.slice(0, 15).map((row) => ({
-      label: String(row[labelIdx]),
-      value: Number(row[numIdx]),
-    }))
+  // Dynamic Chart Data mapping based on selected columns
+  const numericColumns = useMemo(() => {
+    if (!answer || !answer.result.rows.length) return []
+    const firstRow = answer.result.rows[0]
+    return answer.result.columns.filter((_, idx) => typeof firstRow[idx] === 'number')
   }, [answer])
+
+  const categoricalColumns = useMemo(() => {
+    if (!answer || !answer.result.rows.length) return []
+    const firstRow = answer.result.rows[0]
+    return answer.result.columns.filter((_, idx) => typeof firstRow[idx] !== 'number')
+  }, [answer])
+
+  const dynamicChartData = useMemo(() => {
+    if (!answer || !answer.result.rows.length) return []
+    const xCol = selectedXAxis || categoricalColumns[0] || answer.result.columns[0]
+    const yCol = selectedYAxis || numericColumns[0] || answer.result.columns[1]
+    const xIdx = answer.result.columns.indexOf(xCol)
+    const yIdx = answer.result.columns.indexOf(yCol)
+
+    if (xIdx < 0 || yIdx < 0) return []
+    return answer.result.rows.slice(0, 15).map((row) => ({
+      x: String(row[xIdx] ?? 'null'),
+      y: Number(row[yIdx] ?? 0),
+    }))
+  }, [answer, categoricalColumns, numericColumns, selectedXAxis, selectedYAxis])
 
   // Filtered receipts
   const filteredReceipts = useMemo(() => {
@@ -1199,6 +1351,14 @@ metrics:
             >
               <MessageCircle size={16} />
               <span>Chat</span>
+              <ChevronRight size={13} className="nav-chevron" />
+            </a>
+            <a
+              className={`nav-item ${activeTab === 'studio' ? 'active' : ''}`}
+              onClick={() => setActiveTab('studio')}
+            >
+              <Terminal size={16} />
+              <span>Snowflake Studio</span>
               <ChevronRight size={13} className="nav-chevron" />
             </a>
             <a
@@ -1246,14 +1406,23 @@ metrics:
         </div>
 
         <div className="sidebar-footer">
+          <button
+            type="button"
+            className="node-action-btn"
+            style={{ marginBottom: 10, fontSize: '0.75rem', padding: '6px 10px' }}
+            onClick={() => setSettingsModalOpen(true)}
+          >
+            <Sliders size={13} color="var(--accent-primary)" />
+            <span>Engine Settings</span>
+          </button>
           <div className="system-telemetry-box">
             <div className="telemetry-item">
               <span className={`status-dot ${status?.snowflake.ready ? 'ready' : ''}`} />
-              <span>Snowflake: {status?.snowflake.warehouse || 'DATAMIND_WH'}</span>
+              <span>Snowflake: {engineSettings?.snowflake.warehouse || status?.snowflake.warehouse || 'DATAMIND_WH'}</span>
             </div>
             <div className="telemetry-item">
               <span className={`status-dot ${status?.gemma.ready ? 'ready' : ''}`} />
-              <span>Gemma 4: {status?.gemma.model || 'gemma4:e4b'} (GPU)</span>
+              <span>Gemma 4: {engineSettings?.gemma.model || status?.gemma.model || 'gemma4:e4b'} (GPU)</span>
             </div>
           </div>
         </div>
@@ -1268,6 +1437,7 @@ metrics:
             <span className="breadcrumb-current">
               {activeTab === 'pipeline' && 'Pipeline Workbench'}
               {activeTab === 'chat' && 'Conversational Analytics'}
+              {activeTab === 'studio' && 'Snowflake SQL Studio & EXPLAIN'}
               {activeTab === 'receipts' && 'Decision Receipts'}
               {activeTab === 'models' && 'Semantic Catalog'}
               {activeTab === 'evals' && 'Rubric Benchmarks'}
@@ -1275,6 +1445,15 @@ metrics:
           </div>
 
           <div className="header-actions">
+            <button
+              className="btn-secondary"
+              style={{ fontSize: '0.74rem', padding: '5px 10px' }}
+              onClick={() => setSettingsModalOpen(true)}
+              title="Open Runtime Configuration"
+            >
+              <Sliders size={13} />
+              <span>Configure</span>
+            </button>
             <button
               className="btn-snowflake-proof"
               onClick={() => openSnowflakeInspector()}
@@ -1311,7 +1490,7 @@ metrics:
                   </span>
                   <span>
                     <Database size={11} />
-                    {status?.snowflake.warehouse || 'DATAMIND_WH'}
+                    {engineSettings?.snowflake.warehouse || status?.snowflake.warehouse || 'DATAMIND_WH'}
                   </span>
                 </div>
               </div>
@@ -1565,7 +1744,162 @@ metrics:
         )}
 
         {/* -------------------------------------------------------------------------
-            TAB 3: DECISION RECEIPTS PAGE
+            TAB 3: SNOWFLAKE STUDIO & EXPLAIN PROFILER
+           ------------------------------------------------------------------------- */}
+        {activeTab === 'studio' && (
+          <div className="page-content studio-page">
+            <div className="page-header">
+              <div>
+                <h1>Snowflake Cloud Studio & EXPLAIN Profiler</h1>
+                <p>Run live EXPLAIN query plans on compiled SQL, inspect cloud partitions, or execute safe read-only queries.</p>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn-secondary"
+                  onClick={runSnowflakeExplain}
+                  disabled={studioExplainRunning || studioRunning}
+                >
+                  {studioExplainRunning ? <Loader2 size={13} className="spin" /> : <Zap size={13} color="var(--accent-cyan)" />}
+                  Run EXPLAIN Profile
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={runSnowflakeDirectQuery}
+                  disabled={studioRunning || studioExplainRunning}
+                >
+                  {studioRunning ? <Loader2 size={13} className="spin" /> : <Play size={13} />}
+                  Execute on Warehouse
+                </button>
+              </div>
+            </div>
+
+            {/* Data Mutation Simulator Box */}
+            <div className="mutation-simulator-box">
+              <div className="mutation-header">
+                <strong>
+                  <TrendingUp size={15} color="var(--accent-primary)" />
+                  Live Data Mutation & Window Proof (Mandatory Rubric Gate)
+                </strong>
+                <span className="source-tag-mini">Answer shifts as data filter changes</span>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Demonstrate that an answer changes when the data filter changes at question time:
+              </p>
+              <div className="mutation-slider-row">
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Select Calendar Year:</span>
+                {[1995, 1996, 1997].map((yr) => (
+                  <button
+                    key={yr}
+                    className={`year-btn ${activeMutationYear === yr ? 'active' : ''}`}
+                    onClick={() => handleMutationYearChange(yr)}
+                  >
+                    Year {yr}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {studioError && (
+              <div className="trust-note" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', color: 'var(--accent-red)' }}>
+                <AlertTriangle size={15} />
+                <span>{studioError}</span>
+              </div>
+            )}
+
+            <div className="studio-grid">
+              <div className="studio-card">
+                <div className="studio-card-header">
+                  <h3>
+                    <Code2 size={15} color="var(--accent-primary)" />
+                    SQL Editor (Read-Only Guarded)
+                  </h3>
+                  <button
+                    className="btn-secondary"
+                    style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                    onClick={() => {
+                      if (answer?.query.sql) setStudioSql(answer.query.sql)
+                    }}
+                  >
+                    Load Pipeline SQL
+                  </button>
+                </div>
+                <textarea
+                  className="studio-sql-textarea"
+                  value={studioSql}
+                  onChange={(e) => setStudioSql(e.target.value)}
+                  spellCheck={false}
+                  rows={8}
+                />
+              </div>
+
+              <div className="studio-card">
+                <div className="studio-card-header">
+                  <h3>
+                    <Zap size={15} color="var(--accent-cyan)" />
+                    Snowflake EXPLAIN Plan Profile
+                  </h3>
+                  {studioExplainResult && (
+                    <code
+                      className="chat-qid clickable"
+                      onClick={() => openSnowflakeInspector(studioExplainResult.query_id)}
+                    >
+                      {studioExplainResult.query_id.slice(0, 16)}…
+                    </code>
+                  )}
+                </div>
+                <div className="studio-explain-output">
+                  {studioExplainResult ? (
+                    studioExplainResult.plan_lines.join('\n')
+                  ) : (
+                    'Click "Run EXPLAIN Profile" to inspect Snowflake partitions total/assigned, bytes scanned, and table access paths.'
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {studioResult && (
+              <div className="studio-card" style={{ marginTop: 16 }}>
+                <div className="studio-card-header">
+                  <h3>
+                    <Table2 size={15} color="var(--accent-emerald)" />
+                    Direct Execution Result ({studioResult.rows.length} rows)
+                  </h3>
+                  <div style={{ display: 'flex', gap: 10, font: '10px "DM Mono", monospace', color: 'var(--text-muted)' }}>
+                    <span>Query ID: <code className="clickable" onClick={() => openSnowflakeInspector(studioResult.query_id)}>{studioResult.query_id}</code></span>
+                    <span>Time: {studioResult.elapsed_ms}ms</span>
+                    <span>WH: {studioResult.warehouse}</span>
+                  </div>
+                </div>
+
+                <div className="table-scroll" style={{ maxHeight: 260 }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        {studioResult.columns.map((c: string) => (
+                          <th key={c}>{c.replaceAll('_', ' ')}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {studioResult.rows.map((row: any[], ri: number) => (
+                        <tr key={ri}>
+                          <td className="row-num">{ri + 1}</td>
+                          {row.map((cell, ci) => (
+                            <td key={ci}>{cell === null ? 'null' : String(cell)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* -------------------------------------------------------------------------
+            TAB 4: DECISION RECEIPTS PAGE
            ------------------------------------------------------------------------- */}
         {activeTab === 'receipts' && (
           <div className="page-content receipts-page">
@@ -1651,7 +1985,7 @@ metrics:
         )}
 
         {/* -------------------------------------------------------------------------
-            TAB 4: SEMANTIC MODEL PAGE
+            TAB 5: SEMANTIC MODEL PAGE
            ------------------------------------------------------------------------- */}
         {activeTab === 'models' && (
           <div className="page-content models-page">
@@ -1731,7 +2065,7 @@ metrics:
         )}
 
         {/* -------------------------------------------------------------------------
-            TAB 5: RUBRIC EVALS PAGE
+            TAB 6: RUBRIC EVALS PAGE
            ------------------------------------------------------------------------- */}
         {activeTab === 'evals' && (
           <div className="page-content evals-page">
@@ -1817,7 +2151,7 @@ metrics:
       </div>
 
       {/* =========================================================================
-          MODAL 1: RESULT EXPAND (FULL EVIDENCE, CHART, AND SQL)
+          MODAL 1: RESULT EXPAND (MULTI-CHART STUDIO, TABLE, AND SQL)
          ========================================================================= */}
       {expandModalOpen && answer && (
         <div className="modal-overlay" onClick={() => setExpandModalOpen(false)}>
@@ -1837,7 +2171,7 @@ metrics:
                 className={activeModalTab === 'summary' ? 'active' : ''}
                 onClick={() => setActiveModalTab('summary')}
               >
-                Summary & Chart
+                Chart Studio
               </button>
               <button
                 className={activeModalTab === 'table' ? 'active' : ''}
@@ -1866,17 +2200,93 @@ metrics:
                     </div>
                   </div>
 
-                  {chartData.length > 1 && (
-                    <div className="modal-chart-area">
-                      <ResponsiveContainer width="100%" height={250}>
-                        <BarChart data={chartData} margin={{ top: 12, right: 12, bottom: 25, left: 10 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                          <XAxis dataKey="label" tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} />
-                          <YAxis tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} width={45} />
-                          <Tooltip contentStyle={{ background: '#141518', border: '1px solid #27272a', borderRadius: 6 }} />
-                          <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                  {dynamicChartData.length > 0 && (
+                    <div>
+                      {/* Visualizations Studio Toolbar */}
+                      <div className="viz-studio-toolbar">
+                        <div className="viz-type-pills">
+                          <button
+                            className={`viz-type-btn ${chartType === 'bar' ? 'active' : ''}`}
+                            onClick={() => setChartType('bar')}
+                          >
+                            <BarChart3 size={13} />
+                            <span>Bar</span>
+                          </button>
+                          <button
+                            className={`viz-type-btn ${chartType === 'line' ? 'active' : ''}`}
+                            onClick={() => setChartType('line')}
+                          >
+                            <LineChartIcon size={13} />
+                            <span>Line</span>
+                          </button>
+                          <button
+                            className={`viz-type-btn ${chartType === 'area' ? 'active' : ''}`}
+                            onClick={() => setChartType('area')}
+                          >
+                            <TrendingUp size={13} />
+                            <span>Area</span>
+                          </button>
+                        </div>
+
+                        <div className="viz-axis-controls">
+                          {categoricalColumns.length > 0 && (
+                            <label>
+                              X-Axis:
+                              <select
+                                value={selectedXAxis || categoricalColumns[0]}
+                                onChange={(e) => setSelectedXAxis(e.target.value)}
+                              >
+                                {answer.result.columns.map((c) => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+                          {numericColumns.length > 0 && (
+                            <label>
+                              Y-Axis:
+                              <select
+                                value={selectedYAxis || numericColumns[0]}
+                                onChange={(e) => setSelectedYAxis(e.target.value)}
+                              >
+                                {numericColumns.map((c) => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="modal-chart-area">
+                        <ResponsiveContainer width="100%" height={260}>
+                          {chartType === 'bar' ? (
+                            <BarChart data={dynamicChartData} margin={{ top: 12, right: 12, bottom: 25, left: 10 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                              <XAxis dataKey="x" tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
+                              <Tooltip contentStyle={{ background: '#141518', border: '1px solid #27272a', borderRadius: 6 }} />
+                              <Bar dataKey="y" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          ) : chartType === 'line' ? (
+                            <LineChart data={dynamicChartData} margin={{ top: 12, right: 12, bottom: 25, left: 10 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                              <XAxis dataKey="x" tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
+                              <Tooltip contentStyle={{ background: '#141518', border: '1px solid #27272a', borderRadius: 6 }} />
+                              <Line type="monotone" dataKey="y" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                            </LineChart>
+                          ) : (
+                            <AreaChart data={dynamicChartData} margin={{ top: 12, right: 12, bottom: 25, left: 10 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                              <XAxis dataKey="x" tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
+                              <Tooltip contentStyle={{ background: '#141518', border: '1px solid #27272a', borderRadius: 6 }} />
+                              <Area type="monotone" dataKey="y" fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth={2} />
+                            </AreaChart>
+                          )}
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1972,7 +2382,7 @@ metrics:
               <div className="telemetry-grid">
                 <div className="telemetry-card">
                   <span>Warehouse</span>
-                  <strong>{status?.snowflake.warehouse || 'DATAMIND_WH'}</strong>
+                  <strong>{engineSettings?.snowflake.warehouse || status?.snowflake.warehouse || 'DATAMIND_WH'}</strong>
                   <small>X-Small (0.0001 cr/s)</small>
                 </div>
                 <div className="telemetry-card">
@@ -1987,7 +2397,7 @@ metrics:
                 </div>
                 <div className="telemetry-card">
                   <span>Query Tag</span>
-                  <strong>datamind:interactive</strong>
+                  <strong>{engineSettings?.snowflake.query_tag || 'datamind:interactive'}</strong>
                   <small>Audit tagged</small>
                 </div>
               </div>
@@ -2004,7 +2414,7 @@ metrics:
               <div className="inspector-group">
                 <label>Snowflake CLI Command</label>
                 <pre className="sql-box mini">
-                  <code>{`snow sql -q "${(answer?.query.sql || 'SELECT 1;').replace(/\\n/g, ' ')}" --warehouse ${status?.snowflake.warehouse || 'DATAMIND_WH'}`}</code>
+                  <code>{`snow sql -q "${(answer?.query.sql || 'SELECT 1;').replace(/\\n/g, ' ')}" --warehouse ${engineSettings?.snowflake.warehouse || status?.snowflake.warehouse || 'DATAMIND_WH'}`}</code>
                 </pre>
               </div>
             </div>
@@ -2024,7 +2434,180 @@ metrics:
       )}
 
       {/* =========================================================================
-          MODAL 3: CUSTOM DATASET REGISTRATION
+          MODAL 3: ENGINE SETTINGS DRAWER
+         ========================================================================= */}
+      {settingsModalOpen && (
+        <div className="modal-overlay" onClick={() => setSettingsModalOpen(false)}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <Sliders size={16} color="var(--accent-primary)" />
+                <span>Runtime Engine Configuration</span>
+              </div>
+              <button className="modal-close" onClick={() => setSettingsModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSettings}>
+              <div className="modal-body">
+                <p className="modal-desc">
+                  Tune Google Gemma reasoning parameters and Snowflake compute bounds. Changes take effect immediately.
+                </p>
+
+                {settingsSaveMsg && (
+                  <div className="trust-note" style={{ marginBottom: 12 }}>
+                    <CheckCircle2 size={14} color="var(--accent-emerald)" />
+                    <span>{settingsSaveMsg}</span>
+                  </div>
+                )}
+
+                <div className="settings-grid">
+                  <div className="settings-section">
+                    <span className="settings-section-title">
+                      <Bot size={14} color="var(--accent-violet)" />
+                      Google Gemma 4 Reasoning Parameters
+                    </span>
+
+                    <div className="setting-row">
+                      <div className="setting-label">
+                        <span>Temperature</span>
+                        <small>0.0 for deterministic AST; higher for exploratory NL intent</small>
+                      </div>
+                      <div className="setting-control">
+                        <input
+                          type="range"
+                          min={0.0}
+                          max={1.0}
+                          step={0.05}
+                          value={editGemmaTemp}
+                          onChange={(e) => setEditGemmaTemp(Number(e.target.value))}
+                        />
+                        <span className="setting-val-badge">{editGemmaTemp.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div className="setting-row">
+                      <div className="setting-label">
+                        <span>Model Identifier</span>
+                        <small>Local Ollama model name</small>
+                      </div>
+                      <div className="setting-control">
+                        <input
+                          type="text"
+                          value={editGemmaModel}
+                          onChange={(e) => setEditGemmaModel(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="setting-row">
+                      <div className="setting-label">
+                        <span>Inference Timeout</span>
+                        <small>Max seconds to await local GPU execution</small>
+                      </div>
+                      <div className="setting-control">
+                        <input
+                          type="range"
+                          min={30}
+                          max={600}
+                          step={10}
+                          value={editGemmaTimeout}
+                          onChange={(e) => setEditGemmaTimeout(Number(e.target.value))}
+                        />
+                        <span className="setting-val-badge">{editGemmaTimeout}s</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-section">
+                    <span className="settings-section-title">
+                      <Database size={14} color="var(--accent-cyan)" />
+                      Snowflake Warehouse & Cost Controls
+                    </span>
+
+                    <div className="setting-row">
+                      <div className="setting-label">
+                        <span>Compute Warehouse</span>
+                        <small>Snowflake virtual warehouse name</small>
+                      </div>
+                      <div className="setting-control">
+                        <input
+                          type="text"
+                          value={editSnowflakeWh}
+                          onChange={(e) => setEditSnowflakeWh(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="setting-row">
+                      <div className="setting-label">
+                        <span>Statement Timeout</span>
+                        <small>Cost protection: abort queries exceeding threshold</small>
+                      </div>
+                      <div className="setting-control">
+                        <input
+                          type="range"
+                          min={10}
+                          max={180}
+                          step={5}
+                          value={editStatementTimeout}
+                          onChange={(e) => setEditStatementTimeout(Number(e.target.value))}
+                        />
+                        <span className="setting-val-badge">{editStatementTimeout}s</span>
+                      </div>
+                    </div>
+
+                    <div className="setting-row">
+                      <div className="setting-label">
+                        <span>Max Result Rows</span>
+                        <small>Bounded limit on fetched rows</small>
+                      </div>
+                      <div className="setting-control">
+                        <input
+                          type="range"
+                          min={10}
+                          max={500}
+                          step={10}
+                          value={editMaxRows}
+                          onChange={(e) => setEditMaxRows(Number(e.target.value))}
+                        />
+                        <span className="setting-val-badge">{editMaxRows}</span>
+                      </div>
+                    </div>
+
+                    <div className="setting-row">
+                      <div className="setting-label">
+                        <span>Query Tag</span>
+                        <small>Tagged in Snowflake QUERY_HISTORY</small>
+                      </div>
+                      <div className="setting-control">
+                        <input
+                          type="text"
+                          value={editQueryTag}
+                          onChange={(e) => setEditQueryTag(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={() => setSettingsModalOpen(false)}>
+                  Close
+                </button>
+                <button type="submit" className="btn-primary">
+                  Save & Apply Settings
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 4: CUSTOM DATASET REGISTRATION
          ========================================================================= */}
       {customModalOpen && (
         <div className="modal-overlay" onClick={() => setCustomModalOpen(false)}>

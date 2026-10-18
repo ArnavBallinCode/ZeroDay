@@ -15,10 +15,24 @@ class GemmaUnavailable(RuntimeError):
 class GemmaPlanner:
     """Uses a local Google Gemma model for semantic planning, never SQL execution."""
 
-    def __init__(self, base_url: str, model: str, timeout: float = 300.0):
+    def __init__(self, base_url: str, model: str, timeout: float = 300.0, temperature: float = 0.0):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.temperature = max(0.0, min(1.0, temperature))
+
+    def update_settings(
+        self,
+        temperature: float | None = None,
+        model: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        if temperature is not None:
+            self.temperature = max(0.0, min(1.0, temperature))
+        if model:
+            self.model = model
+        if timeout is not None:
+            self.timeout = max(10.0, timeout)
 
     def health(self) -> bool:
         try:
@@ -70,7 +84,7 @@ Return JSON with one key, explanation, containing 2-4 concise sentences."""
                     "prompt": prompt,
                     "stream": False,
                     "format": schema,
-                    "options": {"temperature": 0},
+                    "options": {"temperature": self.temperature},
                     "keep_alive": "60m",
                 },
                 timeout=self.timeout,

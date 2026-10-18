@@ -25,6 +25,49 @@ class SnowflakeExecutor:
         self.allowed_tables = allowed_tables
         self.database = database or settings.snowflake_database
         self.schema = schema or settings.snowflake_schema
+        self.warehouse = settings.snowflake_warehouse
+        self.role = settings.snowflake_role
+        self.statement_timeout = settings.statement_timeout_seconds
+        self.max_rows = settings.max_result_rows
+        self.query_tag = "datamind:interactive:v0.1"
+
+    def update_settings(
+        self,
+        warehouse: str | None = None,
+        role: str | None = None,
+        statement_timeout: int | None = None,
+        max_rows: int | None = None,
+        query_tag: str | None = None,
+    ) -> None:
+        if warehouse:
+            self.warehouse = warehouse
+        if role:
+            self.role = role
+        if statement_timeout is not None:
+            self.statement_timeout = max(5, min(300, statement_timeout))
+        if max_rows is not None:
+            self.max_rows = max(1, min(1000, max_rows))
+        if query_tag:
+            self.query_tag = query_tag
+
+    def explain(self, sql: str) -> dict[str, Any]:
+        validate_read_only(sql, self.allowed_tables)
+        explain_query = CompiledQuery(
+            sql=f"EXPLAIN USING TEXT {sql}",
+            parameters=[],
+            tables=list(self.allowed_tables),
+            selected_fields=[],
+        )
+        if self.settings.active_snowflake_pat:
+            res = self._execute_sql_api(explain_query)
+        else:
+            res = self._execute_connector(explain_query)
+        return {
+            "query_id": res.query_id,
+            "elapsed_ms": res.elapsed_ms,
+            "warehouse": res.warehouse,
+            "plan_lines": [str(row[0]) for row in res.rows if row],
+        }
 
     def execute(self, query: CompiledQuery) -> QueryResult:
         validate_read_only(query.sql, self.allowed_tables)
@@ -38,13 +81,13 @@ class SnowflakeExecutor:
             "account": self.settings.snowflake_account,
             "user": self.settings.snowflake_user,
             "authenticator": self.settings.snowflake_authenticator,
-            "warehouse": self.settings.snowflake_warehouse,
+            "warehouse": self.warehouse,
             "database": self.database,
             "schema": self.schema,
-            "role": self.settings.snowflake_role,
+            "role": self.role,
             "session_parameters": {
-                "QUERY_TAG": "datamind:interactive:v0.1",
-                "STATEMENT_TIMEOUT_IN_SECONDS": self.settings.statement_timeout_seconds,
+                "QUERY_TAG": self.query_tag,
+                "STATEMENT_TIMEOUT_IN_SECONDS": self.statement_timeout,
             },
         }
         if self.settings.snowflake_authenticator == "snowflake":
@@ -55,7 +98,7 @@ class SnowflakeExecutor:
             connection.cursor() as cursor,
         ):
             cursor.execute(query.sql, query.parameters)
-            rows = cursor.fetchmany(self.settings.max_result_rows)
+            rows = cursor.fetchmany(self.max_rows)
             columns = [item[0].lower() for item in cursor.description]
             query_id = cursor.sfqid
 
@@ -64,8 +107,8 @@ class SnowflakeExecutor:
             columns=columns,
             rows=[list(row) for row in rows],
             elapsed_ms=round((time.perf_counter() - started) * 1000),
-            warehouse=self.settings.snowflake_warehouse,
-            role=self.settings.snowflake_role,
+            warehouse=self.warehouse,
+            role=self.role,
             executed_at=datetime.now(UTC),
         )
 
@@ -82,19 +125,19 @@ class SnowflakeExecutor:
         }
         body: dict[str, Any] = {
             "statement": statement,
-            "timeout": self.settings.statement_timeout_seconds,
-            "warehouse": self.settings.snowflake_warehouse,
+            "timeout": self.statement_timeout,
+            "warehouse": self.warehouse,
             "database": self.database,
             "schema": self.schema,
-            "role": self.settings.snowflake_role,
+            "role": self.role,
             "parameters": {
-                "QUERY_TAG": "datamind:interactive:v0.1",
+                "QUERY_TAG": self.query_tag,
             },
         }
         if query.parameters:
             body["bindings"] = self._api_bindings(query.parameters)
 
-        timeout = self.settings.statement_timeout_seconds + 10
+        timeout = self.statement_timeout + 10
         with httpx.Client(timeout=timeout) as client:
             response = client.post(url, headers=headers, json=body)
             payload = response.json()
@@ -112,15 +155,15 @@ class SnowflakeExecutor:
         columns = [column["name"].lower() for column in row_types]
         rows = [
             [self._convert_api_value(value, column) for value, column in zip(row, row_types, strict=True)]
-            for row in payload.get("data", [])[: self.settings.max_result_rows]
+            for row in payload.get("data", [])[: self.max_rows]
         ]
         return QueryResult(
             query_id=payload["statementHandle"],
             columns=columns,
             rows=rows,
             elapsed_ms=round((time.perf_counter() - started) * 1000),
-            warehouse=self.settings.snowflake_warehouse,
-            role=self.settings.snowflake_role,
+            warehouse=self.warehouse,
+            role=self.role,
             executed_at=datetime.now(UTC),
         )
 

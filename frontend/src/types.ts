@@ -167,3 +167,30 @@ export type ChatMessage = {
   steps?: PipelineStep[]
   error?: string
 }
+
+export type EngineSettings = {
+  gemma: {
+    model: string
+    temperature: number
+    timeout: number
+    keep_alive: string
+    ready: boolean
+  }
+  snowflake: {
+    warehouse: string
+    role: string
+    statement_timeout: number
+    max_rows: number
+    query_tag: string
+    database: string
+    schema: string
+    ready: boolean
+  }
+}
+
+export type SnowflakeExplainResult = {
+  query_id: string
+  elapsed_ms: number
+  warehouse: string
+  plan_lines: string[]
+}

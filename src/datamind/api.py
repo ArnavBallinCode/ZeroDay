@@ -14,7 +14,7 @@ from datamind.config import Settings
 from datamind.core.agent import DataMindAgent, NeedsClarification
 from datamind.core.catalog import SemanticCatalog
 from datamind.core.compiler import InvalidPlan
-from datamind.core.models import AnswerEnvelope
+from datamind.core.models import AnswerEnvelope, CompiledQuery
 from datamind.core.safety import UnsafeQuery
 
 
@@ -37,6 +37,25 @@ class RunEvalRequest(BaseModel):
     question: str
     category: str
     expected_tables: list[str] = Field(default_factory=list)
+
+
+class SettingsUpdateRequest(BaseModel):
+    temperature: float | None = Field(default=None, ge=0.0, le=1.0)
+    model: str | None = None
+    timeout: float | None = Field(default=None, ge=10.0, le=600.0)
+    warehouse: str | None = None
+    role: str | None = None
+    statement_timeout: int | None = Field(default=None, ge=5, le=300)
+    max_rows: int | None = Field(default=None, ge=1, le=1000)
+    query_tag: str | None = None
+
+
+class ExplainRequest(BaseModel):
+    sql: str = Field(min_length=5)
+
+
+class DirectQueryRequest(BaseModel):
+    sql: str = Field(min_length=5)
 
 
 settings = Settings()
@@ -64,6 +83,11 @@ def switch_dataset(name: str) -> None:
         database=new_catalog.database,
         schema=new_catalog.schema,
     )
+    new_executor.warehouse = executor.warehouse
+    new_executor.role = executor.role
+    new_executor.statement_timeout = executor.statement_timeout
+    new_executor.max_rows = executor.max_rows
+    new_executor.query_tag = executor.query_tag
     new_agent = DataMindAgent(new_catalog, planner, new_executor)
     active_dataset_id = name
     catalog = new_catalog
@@ -102,6 +126,80 @@ def health() -> dict[str, object]:
             "schema": catalog.schema,
         },
     }
+
+
+@app.get("/api/settings")
+def get_settings() -> dict[str, Any]:
+    return {
+        "gemma": {
+            "model": planner.model,
+            "temperature": planner.temperature,
+            "timeout": planner.timeout,
+            "keep_alive": "60m",
+            "ready": planner.health(),
+        },
+        "snowflake": {
+            "warehouse": executor.warehouse,
+            "role": executor.role,
+            "statement_timeout": executor.statement_timeout,
+            "max_rows": executor.max_rows,
+            "query_tag": executor.query_tag,
+            "database": executor.database,
+            "schema": executor.schema,
+            "ready": settings.snowflake_ready,
+        },
+    }
+
+
+@app.post("/api/settings")
+def update_settings(payload: SettingsUpdateRequest) -> dict[str, Any]:
+    planner.update_settings(
+        temperature=payload.temperature,
+        model=payload.model,
+        timeout=payload.timeout,
+    )
+    executor.update_settings(
+        warehouse=payload.warehouse,
+        role=payload.role,
+        statement_timeout=payload.statement_timeout,
+        max_rows=payload.max_rows,
+        query_tag=payload.query_tag,
+    )
+    return {
+        "success": True,
+        "settings": get_settings(),
+    }
+
+
+@app.post("/api/snowflake/explain")
+def snowflake_explain(payload: ExplainRequest) -> dict[str, Any]:
+    try:
+        return executor.explain(payload.sql)
+    except Exception as exc:
+        raise HTTPException(400, f"Explain failed: {exc}") from exc
+
+
+@app.post("/api/snowflake/query")
+def snowflake_direct_query(payload: DirectQueryRequest) -> dict[str, Any]:
+    try:
+        compiled = CompiledQuery(
+            sql=payload.sql,
+            parameters=[],
+            tables=list(executor.allowed_tables),
+            selected_fields=[],
+        )
+        res = executor.execute(compiled)
+        return {
+            "query_id": res.query_id,
+            "columns": res.columns,
+            "rows": res.rows,
+            "elapsed_ms": res.elapsed_ms,
+            "warehouse": res.warehouse,
+            "role": res.role,
+            "executed_at": res.executed_at.isoformat(),
+        }
+    except Exception as exc:
+        raise HTTPException(400, f"Query execution failed: {exc}") from exc
 
 
 @app.get("/api/datasets")
