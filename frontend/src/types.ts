@@ -252,3 +252,43 @@ export type SnowflakeExplainResult = {
   warehouse: string
   plan_lines: string[]
 }
+
+export type GuardrailViolation = {
+  rule_id: string
+  rule_name: string
+  severity: 'block' | 'warn'
+  message: string
+  category: string
+}
+
+export type GuardrailRule = {
+  id: string
+  name: string
+  description: string
+  category: 'ast' | 'allowlist' | 'injection' | 'complexity' | 'custom'
+  severity: 'block' | 'warn'
+  enabled: boolean
+  is_system: boolean
+  parameters: Record<string, unknown>
+}
+
+export type GuardrailsConfigData = {
+  strict_mode: boolean
+  total_rules: number
+  enabled_rules: number
+  rules: GuardrailRule[]
+}
+
+export type GuardrailEvaluationReport = {
+  passed: boolean
+  rules_checked: number
+  violations: GuardrailViolation[]
+  warnings: GuardrailViolation[]
+  ast_type?: string
+  tables_detected: string[]
+  joins_count: number
+  subqueries_count: number
+  has_limit: boolean
+  limit_value?: number | null
+}
+

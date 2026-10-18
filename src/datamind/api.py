@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from fastapi import FastAPI, HTTPException
@@ -15,13 +16,39 @@ from datamind.core.agent import DataMindAgent, NeedsClarification
 from datamind.core.catalog import SemanticCatalog
 from datamind.core.compiler import InvalidPlan
 from datamind.core.models import AnswerEnvelope, CompiledQuery, QueryPlan
-from datamind.core.safety import UnsafeQuery
+from datamind.core.safety import (
+    GuardrailRule,
+    UnsafeQuery,
+    get_default_guardrails,
+)
 
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=500)
     context: list[str] = Field(default_factory=list, max_length=10)
     previous_plan: QueryPlan | None = None
+
+
+class AddRuleRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    description: str = Field(default="", max_length=500)
+    category: Literal["ast", "allowlist", "injection", "complexity", "custom"] = "custom"
+    severity: Literal["block", "warn"] = "block"
+    enabled: bool = True
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class UpdateRuleRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    severity: Literal["block", "warn"] | None = None
+    enabled: bool | None = None
+    parameters: dict[str, Any] | None = None
+
+
+class ValidateSqlRequest(BaseModel):
+    sql: str = Field(min_length=3)
+
 
 
 class DatasetSelectRequest(BaseModel):
@@ -62,12 +89,14 @@ class DirectQueryRequest(BaseModel):
 settings = Settings()
 active_dataset_id = "tpch"
 catalog = SemanticCatalog.load(Path("config/tpch.yml"))
+guardrails = get_default_guardrails()
 planner = GemmaPlanner(settings.ollama_base_url, settings.gemma_model)
 executor = SnowflakeExecutor(
     settings,
     set(catalog.tables),
     database=catalog.database,
     schema=catalog.schema,
+    guardrails=guardrails,
 )
 agent = DataMindAgent(catalog, planner, executor)
 
@@ -83,6 +112,7 @@ def switch_dataset(name: str) -> None:
         set(new_catalog.tables),
         database=new_catalog.database,
         schema=new_catalog.schema,
+        guardrails=guardrails,
     )
     new_executor.warehouse = executor.warehouse
     new_executor.role = executor.role
@@ -94,6 +124,7 @@ def switch_dataset(name: str) -> None:
     catalog = new_catalog
     executor = new_executor
     agent = new_agent
+
 
 
 app = FastAPI(title="DataMind API", version="0.1.0")
@@ -176,6 +207,8 @@ def update_settings(payload: SettingsUpdateRequest) -> dict[str, Any]:
 def snowflake_explain(payload: ExplainRequest) -> dict[str, Any]:
     try:
         return executor.explain(payload.sql)
+    except UnsafeQuery as exc:
+        raise HTTPException(400, f"Explain blocked by safety guardrails: {exc}") from exc
     except Exception as exc:
         raise HTTPException(400, f"Explain failed: {exc}") from exc
 
@@ -199,8 +232,74 @@ def snowflake_direct_query(payload: DirectQueryRequest) -> dict[str, Any]:
             "role": res.role,
             "executed_at": res.executed_at.isoformat(),
         }
+    except UnsafeQuery as exc:
+        raise HTTPException(400, f"Query blocked by safety guardrails: {exc}") from exc
     except Exception as exc:
         raise HTTPException(400, f"Query execution failed: {exc}") from exc
+
+
+@app.get("/api/guardrails")
+def get_guardrails() -> dict[str, Any]:
+    return {
+        "strict_mode": guardrails.strict_mode,
+        "total_rules": len(guardrails.rules),
+        "enabled_rules": sum(1 for r in guardrails.rules if r.enabled),
+        "rules": [r.model_dump() for r in guardrails.rules],
+    }
+
+
+@app.post("/api/guardrails/rules")
+def add_guardrail_rule(payload: AddRuleRequest) -> dict[str, Any]:
+    rule_id = f"custom-{uuid.uuid4().hex[:8]}"
+    rule = GuardrailRule(
+        id=rule_id,
+        name=payload.name,
+        description=payload.description,
+        category=payload.category,
+        severity=payload.severity,
+        enabled=payload.enabled,
+        is_system=False,
+        parameters=payload.parameters,
+    )
+    guardrails.add_rule(rule)
+    return {"success": True, "rule": rule.model_dump()}
+
+
+@app.patch("/api/guardrails/rules/{rule_id}")
+def update_guardrail_rule(rule_id: str, payload: UpdateRuleRequest) -> dict[str, Any]:
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    rule = guardrails.update_rule(rule_id, updates)
+    if not rule:
+        raise HTTPException(404, f"Guardrail rule {rule_id} not found")
+    return {"success": True, "rule": rule.model_dump()}
+
+
+@app.delete("/api/guardrails/rules/{rule_id}")
+def delete_guardrail_rule(rule_id: str) -> dict[str, Any]:
+    rule = guardrails.get_rule(rule_id)
+    if not rule:
+        raise HTTPException(404, f"Guardrail rule {rule_id} not found")
+    if rule.is_system:
+        raise HTTPException(400, "System guardrails cannot be deleted; you may disable them instead.")
+    guardrails.remove_rule(rule_id)
+    return {"success": True, "deleted_rule_id": rule_id}
+
+
+@app.post("/api/guardrails/validate")
+def validate_sql_against_guardrails(payload: ValidateSqlRequest) -> dict[str, Any]:
+    report = guardrails.evaluate(payload.sql, set(catalog.tables))
+    return report.model_dump()
+
+
+@app.post("/api/guardrails/reset")
+def reset_guardrails() -> dict[str, Any]:
+    guardrails.reset_to_defaults()
+    return {
+        "success": True,
+        "message": "Guardrails reset to default policy",
+        "rules": [r.model_dump() for r in guardrails.rules],
+    }
+
 
 
 @app.get("/api/datasets")
@@ -434,6 +533,8 @@ def ask(payload: AskRequest) -> AnswerEnvelope:
         return agent.ask(payload.question, payload.context, payload.previous_plan)
     except NeedsClarification as exc:
         raise HTTPException(422, {"type": "clarification", "question": str(exc)}) from exc
+    except UnsafeQuery as exc:
+        raise HTTPException(400, f"Query blocked by safety policy: {exc}") from exc
     except (InvalidPlan, GemmaUnavailable) as exc:
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:

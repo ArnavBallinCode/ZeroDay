@@ -10,7 +10,7 @@ import snowflake.connector
 
 from datamind.config import Settings
 from datamind.core.models import CompiledQuery, QueryResult
-from datamind.core.safety import validate_read_only
+from datamind.core.safety import GuardrailsConfig, validate_read_only
 
 
 class SnowflakeExecutor:
@@ -20,6 +20,7 @@ class SnowflakeExecutor:
         allowed_tables: set[str],
         database: str | None = None,
         schema: str | None = None,
+        guardrails: GuardrailsConfig | None = None,
     ):
         self.settings = settings
         self.allowed_tables = allowed_tables
@@ -30,6 +31,7 @@ class SnowflakeExecutor:
         self.statement_timeout = settings.statement_timeout_seconds
         self.max_rows = settings.max_result_rows
         self.query_tag = "datamind:interactive:v0.1"
+        self.guardrails = guardrails
 
     def update_settings(
         self,
@@ -51,7 +53,7 @@ class SnowflakeExecutor:
             self.query_tag = query_tag
 
     def explain(self, sql: str) -> dict[str, Any]:
-        validate_read_only(sql, self.allowed_tables)
+        validate_read_only(sql, self.allowed_tables, guardrails=self.guardrails)
         explain_query = CompiledQuery(
             sql=f"EXPLAIN USING TEXT {sql}",
             parameters=[],
@@ -70,7 +72,7 @@ class SnowflakeExecutor:
         }
 
     def execute(self, query: CompiledQuery) -> QueryResult:
-        validate_read_only(query.sql, self.allowed_tables)
+        validate_read_only(query.sql, self.allowed_tables, guardrails=self.guardrails)
         if self.settings.active_snowflake_pat:
             return self._execute_sql_api(query)
         return self._execute_connector(query)

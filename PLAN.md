@@ -26,6 +26,7 @@ Snowflake performs every calculation. The UI presents the answer and its complet
 - [x] Added repository context files and project skill.
 - [x] Added automated backend/frontend quality gates and contribution/security guidance.
 - [x] Upgraded repository to comprehensive open-source standards (MIT license, Contributor Covenant v2.1, Security disclosure SLA & threat model, CONTRIBUTING guide, Dependabot, CodeQL, issue forms, PR template, SUPPORT, CHANGELOG, and CITATION.cff).
+- [x] Built Configurable Safety & Guardrails Engine with dynamic AST rules, table allowlist enforcement, injection & tautology gates, join/subquery/row limits, dialect blacklists, custom regex/keyword guardrails, and real-time SQL simulation tester.
 
 ### In progress
 

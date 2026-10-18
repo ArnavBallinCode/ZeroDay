@@ -9,7 +9,7 @@
 | M5 inspectable evidence | Bound SQL, parameters, raw rows, tables, Snowflake query ID, and Decision Receipts with JSON export | Verified |
 | M6 ambiguity and missing data | Planner clarification contract, sqlglot injection guard, and explicit zero-row response | Verified |
 | M7 Snowflake and Gemma | Local Gemma 4 plans; Snowflake computes 4-way joins; live mutation proof changes results | Verified |
-| M8 reproducible open source | MIT license, pinned environment, setup script, 17 unit tests, ruff clean, architecture docs | Verified |
+| M8 reproducible open source | MIT license, pinned environment, setup script, 22 unit tests, ruff clean, architecture docs | Verified |
 
 The repository also includes `datamind doctor` for environment verification, `datamind smoke`
 for a real end-to-end evidence-producing run, `datamind benchmark` for the 25-case ground-truth
@@ -23,4 +23,6 @@ suite, and `datamind demo-mutation` for the live answer-mutation proof.
 4. **Multiple semantic models**: TPC-H SF1 (1.5M rows), TPC-H SF10 (15M rows), E-Commerce, and custom YAML model hot-reloading.
 5. **Sentence-level evidence verification**: Sentence parser extracts claims and flags ungrounded assertions against returned row values.
 6. **Snowflake cost & telemetry tracking**: Captures credits used, partitions scanned, bytes scanned, and result cache hits.
+7. **Configurable Security Guardrails Engine**: Dynamic AST validation with sqlglot, semantic-model table allowlists, injection/tautology gates, warehouse compute guards (joins/subqueries/LIMIT ceilings), dialect function blacklists, custom regex/keyword guardrails, and real-time SQL execution simulator with rule-by-rule reporting.
+
 

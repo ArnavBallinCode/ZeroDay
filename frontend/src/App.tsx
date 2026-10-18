@@ -53,6 +53,7 @@ import {
   Sparkles,
   Table2,
   Terminal,
+  Trash2,
   TrendingUp,
   User,
   X,
@@ -82,6 +83,8 @@ import {
   EngineSettings,
   EvalCase,
   EvalResult,
+  GuardrailEvaluationReport,
+  GuardrailsConfigData,
   MutationProofResult,
   RunHistoryItem,
   SemanticModelFull,
@@ -734,12 +737,53 @@ const initialPipelineEdges: Edge[] = [
 // MAIN APPLICATION
 // ============================================================================
 
+// Guardrail parameter type extractors
+function getNumParam(params: Record<string, unknown>, key: string, fallback: number): number {
+  const val = params[key]
+  return typeof val === 'number' ? val : fallback
+}
+
+function getBoolParam(params: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  const val = params[key]
+  return typeof val === 'boolean' ? val : fallback
+}
+
+function getListParam(params: Record<string, unknown>, key: string): string[] {
+  const val = params[key]
+  return Array.isArray(val) ? (val as string[]) : []
+}
+
+function getStringParam(params: Record<string, unknown>, key: string): string {
+  const val = params[key]
+  return typeof val === 'string' ? val : ''
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'chat' | 'receipts' | 'models' | 'evals' | 'studio'>('pipeline')
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'chat' | 'receipts' | 'models' | 'evals' | 'studio' | 'guardrails'>('pipeline')
   const [status, setStatus] = useState<Status | null>(null)
   const [datasets, setDatasets] = useState<DatasetMeta[]>([])
   const [activeDatasetId, setActiveDatasetId] = useState<string>('tpch')
   const [semanticModel, setSemanticModel] = useState<SemanticModelFull | null>(null)
+
+  // Guardrails state & configuration
+  const [guardrailsData, setGuardrailsData] = useState<GuardrailsConfigData | null>(null)
+  const [guardrailsLoading, setGuardrailsLoading] = useState(false)
+  const [selectedGuardrailCategory, setSelectedGuardrailCategory] = useState<string>('all')
+  const [customRuleModalOpen, setCustomRuleModalOpen] = useState(false)
+  const [newRuleName, setNewRuleName] = useState('')
+  const [newRuleDesc, setNewRuleDesc] = useState('')
+  const [newRuleCategory, setNewRuleCategory] = useState<'custom' | 'ast' | 'allowlist' | 'injection' | 'complexity'>('custom')
+  const [newRuleSeverity, setNewRuleSeverity] = useState<'block' | 'warn'>('block')
+  const [newRuleType, setNewRuleType] = useState<'pattern' | 'keywords'>('pattern')
+  const [newRulePattern, setNewRulePattern] = useState('')
+  const [newRuleKeywords, setNewRuleKeywords] = useState('')
+  const [customRuleError, setCustomRuleError] = useState('')
+  const [newKeywordInput, setNewKeywordInput] = useState<Record<string, string>>({})
+
+  // Guardrail SQL Simulator
+  const [simulatorSql, setSimulatorSql] = useState('SELECT c.c_name, o.o_totalprice FROM customer c JOIN orders o ON c.c_custkey = o.o_custkey LIMIT 10')
+  const [simulatorReport, setSimulatorReport] = useState<GuardrailEvaluationReport | null>(null)
+  const [simulatorLoading, setSimulatorLoading] = useState(false)
 
   // Sidebar state (Pin toggle + Hover expansion)
   const [sidebarPinned, setSidebarPinned] = useState<boolean>(() => {
@@ -929,7 +973,168 @@ metrics:
   )
   const [customError, setCustomError] = useState('')
 
-  // Load backend health, datasets, settings, evals
+  // Guardrails helper handlers
+  const fetchGuardrails = async () => {
+    try {
+      setGuardrailsLoading(true)
+      const res = await fetch('/api/guardrails')
+      if (res.ok) {
+        const data = await res.json()
+        setGuardrailsData(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch guardrails:', err)
+    } finally {
+      setGuardrailsLoading(false)
+    }
+  }
+
+  const toggleGuardrailRule = async (ruleId: string, enabled: boolean) => {
+    try {
+      const res = await fetch(`/api/guardrails/rules/${ruleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      if (res.ok) {
+        fetchGuardrails()
+      }
+    } catch (err) {
+      console.error('Failed to toggle guardrail rule:', err)
+    }
+  }
+
+  const updateGuardrailSeverity = async (ruleId: string, severity: 'block' | 'warn') => {
+    try {
+      const res = await fetch(`/api/guardrails/rules/${ruleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ severity }),
+      })
+      if (res.ok) {
+        fetchGuardrails()
+      }
+    } catch (err) {
+      console.error('Failed to update guardrail severity:', err)
+    }
+  }
+
+  const updateGuardrailParam = async (ruleId: string, paramKey: string, paramValue: unknown) => {
+    if (!guardrailsData) return
+    const rule = guardrailsData.rules.find((r) => r.id === ruleId)
+    if (!rule) return
+    const newParams = { ...rule.parameters, [paramKey]: paramValue }
+    try {
+      const res = await fetch(`/api/guardrails/rules/${ruleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parameters: newParams }),
+      })
+      if (res.ok) {
+        fetchGuardrails()
+      }
+    } catch (err) {
+      console.error('Failed to update guardrail parameter:', err)
+    }
+  }
+
+  const deleteCustomGuardrail = async (ruleId: string) => {
+    try {
+      const res = await fetch(`/api/guardrails/rules/${ruleId}`, { method: 'DELETE' })
+      if (res.ok) {
+        fetchGuardrails()
+      }
+    } catch (err) {
+      console.error('Failed to delete guardrail:', err)
+    }
+  }
+
+  const handleCreateCustomRule = async (e: FormEvent) => {
+    e.preventDefault()
+    setCustomRuleError('')
+    if (!newRuleName.trim()) {
+      setCustomRuleError('Rule name is required')
+      return
+    }
+    const params: Record<string, unknown> = {}
+    if (newRuleType === 'pattern') {
+      if (!newRulePattern.trim()) {
+        setCustomRuleError('Regex pattern is required')
+        return
+      }
+      params.pattern = newRulePattern.trim()
+    } else {
+      const kws = newRuleKeywords.split(',').map((s) => s.trim()).filter(Boolean)
+      if (kws.length === 0) {
+        setCustomRuleError('At least one keyword is required')
+        return
+      }
+      params.keywords = kws
+    }
+
+    try {
+      const res = await fetch('/api/guardrails/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newRuleName.trim(),
+          description: newRuleDesc.trim(),
+          category: newRuleCategory,
+          severity: newRuleSeverity,
+          enabled: true,
+          parameters: params,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setCustomRuleError(err.detail || 'Failed to create guardrail rule')
+        return
+      }
+      setCustomRuleModalOpen(false)
+      setNewRuleName('')
+      setNewRuleDesc('')
+      setNewRulePattern('')
+      setNewRuleKeywords('')
+      fetchGuardrails()
+    } catch (err: unknown) {
+      setCustomRuleError(err instanceof Error ? err.message : 'Network error creating rule')
+    }
+  }
+
+  const resetAllGuardrails = async () => {
+    if (!confirm('Reset all guardrails to the default Zero-Mutation security policy?')) return
+    try {
+      const res = await fetch('/api/guardrails/reset', { method: 'POST' })
+      if (res.ok) {
+        fetchGuardrails()
+      }
+    } catch (err) {
+      console.error('Failed to reset guardrails:', err)
+    }
+  }
+
+  const runGuardrailSimulator = async (customSql?: string) => {
+    const targetSql = customSql || simulatorSql
+    if (!targetSql.trim()) return
+    try {
+      setSimulatorLoading(true)
+      const res = await fetch('/api/guardrails/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: targetSql }),
+      })
+      if (res.ok) {
+        const data: GuardrailEvaluationReport = await res.json()
+        setSimulatorReport(data)
+      }
+    } catch (err) {
+      console.error('Failed to run guardrail simulation:', err)
+    } finally {
+      setSimulatorLoading(false)
+    }
+  }
+
+  // Load backend health, datasets, settings, evals, guardrails
   useEffect(() => {
     fetch('/api/health')
       .then((r) => r.json())
@@ -970,6 +1175,11 @@ metrics:
     fetch('/api/evals')
       .then((r) => r.json())
       .then(setEvalList)
+      .catch(() => {})
+
+    fetch('/api/guardrails')
+      .then((r) => r.json())
+      .then(setGuardrailsData)
       .catch(() => {})
   }, [])
 
@@ -1039,7 +1249,7 @@ metrics:
             ...n,
             data: {
               status: executionStatus === 'error' ? 'blocked' : answer ? 'verified' : 'idle',
-              onInspect: () => setExpandModalOpen(true),
+              onInspect: () => setActiveTab('guardrails'),
             },
           }
         }
@@ -1536,6 +1746,15 @@ metrics:
               <span>Rubric Evals</span>
               <span className="nav-count">{benchmarkSuite ? `${benchmarkSuite.passed_cases}/25` : '25'}</span>
             </a>
+            <a
+              className={`nav-item ${activeTab === 'guardrails' ? 'active' : ''}`}
+              onClick={() => setActiveTab('guardrails')}
+              aria-label="Safety & Guardrails"
+            >
+              <ShieldAlert size={16} />
+              <span>Guardrails</span>
+              <span className="nav-count">{guardrailsData ? `${guardrailsData.enabled_rules}/${guardrailsData.total_rules}` : '8'}</span>
+            </a>
           </div>
 
           <div className="nav-section" style={{ marginTop: 18 }}>
@@ -1598,6 +1817,7 @@ metrics:
               {activeTab === 'receipts' && 'Decision Receipts'}
               {activeTab === 'models' && 'Semantic Catalog'}
               {activeTab === 'evals' && 'Rubric Benchmarks'}
+              {activeTab === 'guardrails' && 'Safety & Guardrails Engine'}
             </span>
           </div>
 
@@ -2430,6 +2650,492 @@ metrics:
             </div>
           </div>
         )}
+
+        {/* -------------------------------------------------------------------------
+            TAB 7: SAFETY & GUARDRAILS ENGINE
+           ------------------------------------------------------------------------- */}
+        {activeTab === 'guardrails' && (
+          <div className="page-content guardrails-page">
+            <div className="page-header">
+              <div>
+                <h1>Safety & Guardrails Engine</h1>
+                <p>Deterministic Zero-Mutation policies, AST traversal, allowlists, and real-time SQL execution gates.</p>
+              </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <button
+                  className="btn-primary"
+                  onClick={() => setCustomRuleModalOpen(true)}
+                >
+                  <Plus size={13} />
+                  <span>Add Custom Guardrail</span>
+                </button>
+                <button
+                  className="btn-secondary"
+                  onClick={resetAllGuardrails}
+                  title="Reset to factory zero-mutation safety policy"
+                >
+                  <RefreshCw size={13} />
+                  <span>Reset Policy</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Summary Cards */}
+            <div className="guardrails-stats-bar">
+              <div className="guardrail-stat-card">
+                <span>Active Enforcements</span>
+                <strong style={{ color: 'var(--accent-emerald)' }}>
+                  {guardrailsData ? `${guardrailsData.enabled_rules} of ${guardrailsData.total_rules} Active` : '8 of 8 Active'}
+                </strong>
+              </div>
+              <div className="guardrail-stat-card">
+                <span>Mutation Security</span>
+                <strong style={{ color: '#60a5fa' }}>Zero Mutation</strong>
+              </div>
+              <div className="guardrail-stat-card">
+                <span>AST Parser Engine</span>
+                <strong style={{ color: 'var(--accent-cyan)' }}>SQLGlot Snowflake</strong>
+              </div>
+              <div className="guardrail-stat-card">
+                <span>Warehouse Protection</span>
+                <strong style={{ color: '#fbbf24' }}>Bound Params & Joins</strong>
+              </div>
+            </div>
+
+            {/* Filter Pills */}
+            <div className="guardrails-filter-bar">
+              <div className="guardrails-category-pills">
+                {[
+                  { id: 'all', label: 'All Rules' },
+                  { id: 'ast', label: 'AST & Statements' },
+                  { id: 'allowlist', label: 'Allowlist' },
+                  { id: 'injection', label: 'SQL Injection' },
+                  { id: 'complexity', label: 'Complexity & Limits' },
+                  { id: 'custom', label: 'Custom & Dialect' },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    className={`category-pill-btn ${selectedGuardrailCategory === cat.id ? 'active' : ''}`}
+                    onClick={() => setSelectedGuardrailCategory(cat.id)}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Interception Gate: <code style={{ color: 'var(--accent-cyan)' }}>validate_read_only()</code>
+              </div>
+            </div>
+
+            {/* 2-Column Layout: Rules List + Live Guardrail Simulator */}
+            <div className="guardrails-layout">
+              {/* Left Column: Configurable Rules */}
+              <div className="guardrails-list">
+                {guardrailsLoading && !guardrailsData && (
+                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <Loader2 size={24} className="spin" style={{ margin: '0 auto 12px auto' }} />
+                    <p>Loading active guardrail rules...</p>
+                  </div>
+                )}
+
+                {guardrailsData?.rules
+                  .filter((r) => selectedGuardrailCategory === 'all' || r.category === selectedGuardrailCategory)
+                  .map((rule) => {
+                    return (
+                      <div key={rule.id} className={`guardrail-card ${!rule.enabled ? 'disabled' : ''}`}>
+                        <div className="guardrail-card-top">
+                          <div className="guardrail-card-info">
+                            <div className="guardrail-badge-row">
+                              <span className={`guardrail-category-tag ${rule.category}`}>
+                                {rule.category}
+                              </span>
+                              <select
+                                className={`guardrail-severity-select ${rule.severity}`}
+                                value={rule.severity}
+                                onChange={(e) => updateGuardrailSeverity(rule.id, e.target.value as 'block' | 'warn')}
+                                title="Change action when rule triggers"
+                              >
+                                <option value="block">BLOCK</option>
+                                <option value="warn">WARN</option>
+                              </select>
+                              {rule.is_system && (
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>System Rule</span>
+                              )}
+                            </div>
+                            <h4 className="guardrail-card-title">{rule.name}</h4>
+                            <p className="guardrail-card-desc">{rule.description}</p>
+                          </div>
+
+                          <div className="guardrail-card-actions">
+                            <button
+                              className={`guardrail-toggle-btn ${rule.enabled ? 'active' : ''}`}
+                              onClick={() => toggleGuardrailRule(rule.id, !rule.enabled)}
+                            >
+                              <span className={`status-dot ${rule.enabled ? 'ready' : ''}`} />
+                              <span>{rule.enabled ? 'Enabled' : 'Disabled'}</span>
+                            </button>
+                            {!rule.is_system && (
+                              <button
+                                className="guardrail-delete-btn"
+                                onClick={() => deleteCustomGuardrail(rule.id)}
+                                title="Delete custom rule"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Interactive Parameter Tuning for specific rules */}
+                        {rule.id === 'rule-max-joins' && (
+                          <div className="guardrail-params-box">
+                            <div className="guardrail-param-row">
+                              <span className="guardrail-param-label">Maximum Allowed Table Joins:</span>
+                              <div className="guardrail-param-control">
+                                <input
+                                  type="range"
+                                  min={1}
+                                  max={12}
+                                  value={getNumParam(rule.parameters, 'max_joins', 6)}
+                                  onChange={(e) => updateGuardrailParam(rule.id, 'max_joins', Number(e.target.value))}
+                                />
+                                <span style={{ font: '12px "DM Mono", monospace', width: 24, textAlign: 'center' }}>
+                                  {getNumParam(rule.parameters, 'max_joins', 6)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {rule.id === 'rule-max-subqueries' && (
+                          <div className="guardrail-params-box">
+                            <div className="guardrail-param-row">
+                              <span className="guardrail-param-label">Max Nested Subquery Depth:</span>
+                              <div className="guardrail-param-control">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={10}
+                                  className="guardrail-number-input"
+                                  value={getNumParam(rule.parameters, 'max_subqueries', 3)}
+                                  onChange={(e) => updateGuardrailParam(rule.id, 'max_subqueries', Number(e.target.value))}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {rule.id === 'rule-enforce-limit' && (
+                          <div className="guardrail-params-box">
+                            <div className="guardrail-param-row">
+                              <span className="guardrail-param-label">Result Row Ceiling (Max LIMIT):</span>
+                              <div className="guardrail-param-control">
+                                <input
+                                  type="number"
+                                  min={10}
+                                  max={10000}
+                                  step={50}
+                                  className="guardrail-number-input"
+                                  style={{ width: 80 }}
+                                  value={getNumParam(rule.parameters, 'max_limit', 1000)}
+                                  onChange={(e) => updateGuardrailParam(rule.id, 'max_limit', Number(e.target.value))}
+                                />
+                              </div>
+                            </div>
+                            <div className="guardrail-param-row">
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={getBoolParam(rule.parameters, 'require_limit', false)}
+                                  onChange={(e) => updateGuardrailParam(rule.id, 'require_limit', e.target.checked)}
+                                />
+                                <span>Strictly require explicit LIMIT in every query</span>
+                              </label>
+                            </div>
+                          </div>
+                        )}
+
+                        {rule.id === 'rule-sql-injection' && (
+                          <div className="guardrail-params-box">
+                            <div className="guardrail-param-row">
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={getBoolParam(rule.parameters, 'block_comments', true)}
+                                  onChange={(e) => updateGuardrailParam(rule.id, 'block_comments', e.target.checked)}
+                                />
+                                <span>Block SQL comments (-- or /* */)</span>
+                              </label>
+                            </div>
+                            <div className="guardrail-param-row">
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={getBoolParam(rule.parameters, 'block_tautologies', true)}
+                                  onChange={(e) => updateGuardrailParam(rule.id, 'block_tautologies', e.target.checked)}
+                                />
+                                <span>Block tautological filters (e.g. WHERE 1=1, OR 1=1)</span>
+                              </label>
+                            </div>
+                          </div>
+                        )}
+
+                        {rule.id === 'rule-forbidden-keywords' && (
+                          <div className="guardrail-params-box">
+                            <span className="guardrail-param-label" style={{ marginBottom: 4, display: 'block' }}>
+                              Blacklisted Keywords & Procedures:
+                            </span>
+                            <div className="guardrail-chips-list">
+                              {getListParam(rule.parameters, 'keywords').map((kw: string) => (
+                                <span key={kw} className="guardrail-chip">
+                                  {kw}
+                                  <button
+                                    type="button"
+                                    className="guardrail-chip-remove"
+                                    onClick={() => {
+                                      const filtered = getListParam(rule.parameters, 'keywords').filter((k: string) => k !== kw)
+                                      updateGuardrailParam(rule.id, 'keywords', filtered)
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                            <form
+                              className="guardrail-add-chip-form"
+                              onSubmit={(e) => {
+                                e.preventDefault()
+                                const val = (newKeywordInput[rule.id] || '').trim().toUpperCase()
+                                if (val) {
+                                  const existing = getListParam(rule.parameters, 'keywords')
+                                  if (!existing.includes(val)) {
+                                    updateGuardrailParam(rule.id, 'keywords', [...existing, val])
+                                  }
+                                  setNewKeywordInput((prev) => ({ ...prev, [rule.id]: '' }))
+                                }
+                              }}
+                            >
+                              <input
+                                type="text"
+                                className="guardrail-chip-input"
+                                placeholder="+ Keyword (e.g. DROP)"
+                                value={newKeywordInput[rule.id] || ''}
+                                onChange={(e) => setNewKeywordInput((prev) => ({ ...prev, [rule.id]: e.target.value }))}
+                              />
+                              <button type="submit" className="btn-secondary" style={{ padding: '3px 8px', fontSize: '0.7rem' }}>
+                                Add
+                              </button>
+                            </form>
+                          </div>
+                        )}
+
+                        {!rule.is_system && (
+                          <div className="guardrail-params-box">
+                            {Boolean(getStringParam(rule.parameters, 'pattern')) && (
+                              <div className="guardrail-param-row">
+                                <span className="guardrail-param-label">Regex Pattern:</span>
+                                <code style={{ color: 'var(--accent-cyan)' }}>{getStringParam(rule.parameters, 'pattern')}</code>
+                              </div>
+                            )}
+                            {getListParam(rule.parameters, 'keywords').length > 0 && (
+                              <div className="guardrail-param-row">
+                                <span className="guardrail-param-label">Keywords:</span>
+                                <div className="guardrail-chips-list">
+                                  {getListParam(rule.parameters, 'keywords').map((kw: string) => (
+                                    <span key={kw} className="guardrail-chip">{kw}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+              </div>
+
+              {/* Right Column: Live Guardrail SQL Simulator */}
+              <div className="guardrail-simulator">
+                <div className="guardrail-simulator-header">
+                  <h3>
+                    <ShieldCheck size={16} color="var(--accent-cyan)" />
+                    Guardrail SQL Simulator
+                  </h3>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Pre-Execution Gate</span>
+                </div>
+
+                <div className="simulator-presets">
+                  <span>Quick Simulation Vectors</span>
+                  <div className="simulator-preset-buttons">
+                    <button
+                      className="preset-btn"
+                      onClick={() => {
+                        const sql = 'SELECT c.c_name, SUM(o.o_totalprice) FROM customer c JOIN orders o ON c.c_custkey = o.o_custkey GROUP BY c.c_name LIMIT 10'
+                        setSimulatorSql(sql)
+                        runGuardrailSimulator(sql)
+                      }}
+                    >
+                      Safe Query
+                    </button>
+                    <button
+                      className="preset-btn"
+                      onClick={() => {
+                        const sql = 'SELECT * FROM orders; DROP TABLE customer;'
+                        setSimulatorSql(sql)
+                        runGuardrailSimulator(sql)
+                      }}
+                    >
+                      DDL Mutation
+                    </button>
+                    <button
+                      className="preset-btn"
+                      onClick={() => {
+                        const sql = 'SELECT * FROM orders WHERE 1=1'
+                        setSimulatorSql(sql)
+                        runGuardrailSimulator(sql)
+                      }}
+                    >
+                      Tautology (1=1)
+                    </button>
+                    <button
+                      className="preset-btn"
+                      onClick={() => {
+                        const sql = 'SELECT SYSTEM$WAIT(5) FROM orders'
+                        setSimulatorSql(sql)
+                        runGuardrailSimulator(sql)
+                      }}
+                    >
+                      Forbidden Dialect
+                    </button>
+                    <button
+                      className="preset-btn"
+                      onClick={() => {
+                        const sql = 'SELECT * FROM snowflake.account_usage.users'
+                        setSimulatorSql(sql)
+                        runGuardrailSimulator(sql)
+                      }}
+                    >
+                      Allowlist Violation
+                    </button>
+                    <button
+                      className="preset-btn"
+                      onClick={() => {
+                        const sql = 'SELECT * FROM customer c JOIN orders o ON 1=1 JOIN lineitem l ON 1=1 JOIN nation n ON 1=1 JOIN region r ON 1=1 JOIN part p ON 1=1 JOIN supplier s ON 1=1'
+                        setSimulatorSql(sql)
+                        runGuardrailSimulator(sql)
+                      }}
+                    >
+                      7-Way Joins
+                    </button>
+                  </div>
+                </div>
+
+                <textarea
+                  className="simulator-sql-textarea"
+                  value={simulatorSql}
+                  onChange={(e) => setSimulatorSql(e.target.value)}
+                  placeholder="Enter SQL to test against active guardrails..."
+                />
+
+                <button
+                  className="btn-primary"
+                  onClick={() => runGuardrailSimulator()}
+                  disabled={simulatorLoading}
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  {simulatorLoading ? <Loader2 size={13} className="spin" /> : <Play size={13} />}
+                  <span>{simulatorLoading ? 'Evaluating Guardrails…' : 'Simulate & Validate Query'}</span>
+                </button>
+
+                {simulatorReport && (
+                  <div className={`simulator-result-box ${simulatorReport.passed ? 'pass' : 'block'}`}>
+                    <div className="simulator-status-banner">
+                      <div className="simulator-status-title">
+                        {simulatorReport.passed ? (
+                          <>
+                            <CheckCircle2 size={16} color="var(--accent-emerald)" />
+                            <span style={{ color: 'var(--accent-emerald)' }}>PASSED ALL GUARDRAILS</span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle size={16} color="var(--accent-red)" />
+                            <span style={{ color: 'var(--accent-red)' }}>BLOCKED BY POLICY ENGINE</span>
+                          </>
+                        )}
+                      </div>
+                      <span style={{ font: '10px "DM Mono", monospace', color: 'var(--text-muted)' }}>
+                        {simulatorReport.rules_checked} Rules Evaluated
+                      </span>
+                    </div>
+
+                    <div className="simulator-tokens-grid">
+                      <div className="simulator-token-item">
+                        <span>AST Root Type</span>
+                        <strong>{simulatorReport.ast_type || 'Unknown'}</strong>
+                      </div>
+                      <div className="simulator-token-item">
+                        <span>Joins Count</span>
+                        <strong>{simulatorReport.joins_count}</strong>
+                      </div>
+                      <div className="simulator-token-item">
+                        <span>Subqueries</span>
+                        <strong>{simulatorReport.subqueries_count}</strong>
+                      </div>
+                      <div className="simulator-token-item">
+                        <span>LIMIT Value</span>
+                        <strong>{simulatorReport.has_limit ? simulatorReport.limit_value || 'Present' : 'None'}</strong>
+                      </div>
+                    </div>
+
+                    {simulatorReport.tables_detected.length > 0 && (
+                      <div style={{ fontSize: '0.7rem' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Tables Detected: </span>
+                        <code style={{ color: 'var(--accent-cyan)' }}>
+                          {simulatorReport.tables_detected.join(', ')}
+                        </code>
+                      </div>
+                    )}
+
+                    {simulatorReport.violations.length > 0 && (
+                      <div className="simulator-violations-list">
+                        <span style={{ fontSize: '0.68rem', color: '#fca5a5', fontWeight: 600 }}>
+                          Violations ({simulatorReport.violations.length})
+                        </span>
+                        {simulatorReport.violations.map((v, i) => (
+                          <div key={i} className={`simulator-violation-item ${v.severity}`}>
+                            <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+                            <div>
+                              <strong>{v.rule_name}: </strong>
+                              <span>{v.message}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {simulatorReport.warnings.length > 0 && (
+                      <div className="simulator-violations-list">
+                        <span style={{ fontSize: '0.68rem', color: '#fde68a', fontWeight: 600 }}>
+                          Warnings ({simulatorReport.warnings.length})
+                        </span>
+                        {simulatorReport.warnings.map((w, i) => (
+                          <div key={i} className={`simulator-violation-item ${w.severity}`}>
+                            <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+                            <div>
+                              <strong>{w.rule_name}: </strong>
+                              <span>{w.message}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* =========================================================================
@@ -2919,6 +3625,27 @@ metrics:
                   </div>
                 )}
 
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <ShieldAlert size={16} color="var(--accent-cyan)" />
+                    <div>
+                      <strong style={{ fontSize: '0.82rem', color: '#ffffff', display: 'block' }}>Compiler Guardrails & Invariants</strong>
+                      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>Configure allowlists, query bounds, and custom security policies</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: '0.72rem', padding: '4px 10px' }}
+                    onClick={() => {
+                      setSettingsModalOpen(false)
+                      setActiveTab('guardrails')
+                    }}
+                  >
+                    Open Guardrails →
+                  </button>
+                </div>
+
                 <div className="settings-grid">
                   <div className="settings-section">
                     <span className="settings-section-title">
@@ -3101,6 +3828,171 @@ metrics:
                 </button>
                 <button type="submit" className="btn-primary">
                   Activate Dataset
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: ADD CUSTOM GUARDRAIL RULE
+         ========================================================================= */}
+      {customRuleModalOpen && (
+        <div className="modal-overlay" onClick={() => setCustomRuleModalOpen(false)}>
+          <div className="modal-container medium" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <ShieldAlert size={16} color="var(--accent-cyan)" />
+                <span>Add Custom Guardrail Rule</span>
+              </div>
+              <button className="modal-close" onClick={() => setCustomRuleModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCustomRule}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p className="modal-desc">
+                  Define custom regex patterns or keyword blacklists to intercept unsafe SQL before execution.
+                </p>
+
+                <div className="setting-field">
+                  <label className="setting-label" style={{ display: 'block', marginBottom: 4 }}>
+                    Rule Name
+                  </label>
+                  <input
+                    type="text"
+                    className="modal-input"
+                    style={{ width: '100%', padding: '8px 12px', background: '#0d0e11', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: '#ffffff' }}
+                    placeholder="e.g. Block Wildcard Projections"
+                    value={newRuleName}
+                    onChange={(e) => setNewRuleName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="setting-field">
+                  <label className="setting-label" style={{ display: 'block', marginBottom: 4 }}>
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    className="modal-input"
+                    style={{ width: '100%', padding: '8px 12px', background: '#0d0e11', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: '#ffffff' }}
+                    placeholder="e.g. Forbid SELECT * queries to ensure deterministic projection columns"
+                    value={newRuleDesc}
+                    onChange={(e) => setNewRuleDesc(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label className="setting-label" style={{ display: 'block', marginBottom: 4 }}>
+                      Category
+                    </label>
+                    <select
+                      className="modal-input"
+                      style={{ width: '100%', padding: '8px 12px', background: '#0d0e11', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: '#ffffff' }}
+                      value={newRuleCategory}
+                      onChange={(e) => setNewRuleCategory(e.target.value as 'custom' | 'ast' | 'allowlist' | 'injection' | 'complexity')}
+                    >
+                      <option value="custom">Custom Policy</option>
+                      <option value="ast">AST & Syntax</option>
+                      <option value="allowlist">Allowlist</option>
+                      <option value="injection">SQL Injection</option>
+                      <option value="complexity">Complexity & Limits</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="setting-label" style={{ display: 'block', marginBottom: 4 }}>
+                      Enforcement Action
+                    </label>
+                    <select
+                      className="modal-input"
+                      style={{ width: '100%', padding: '8px 12px', background: '#0d0e11', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: '#ffffff' }}
+                      value={newRuleSeverity}
+                      onChange={(e) => setNewRuleSeverity(e.target.value as 'block' | 'warn')}
+                    >
+                      <option value="block">BLOCK (Strict Interception)</option>
+                      <option value="warn">WARN (Notify in Report)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="setting-label" style={{ display: 'block', marginBottom: 6 }}>
+                    Rule Detection Mode
+                  </label>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.8rem', color: newRuleType === 'pattern' ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      <input
+                        type="radio"
+                        name="ruleType"
+                        checked={newRuleType === 'pattern'}
+                        onChange={() => setNewRuleType('pattern')}
+                      />
+                      <span>Regular Expression (Regex)</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.8rem', color: newRuleType === 'keywords' ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      <input
+                        type="radio"
+                        name="ruleType"
+                        checked={newRuleType === 'keywords'}
+                        onChange={() => setNewRuleType('keywords')}
+                      />
+                      <span>Keyword Blacklist</span>
+                    </label>
+                  </div>
+                </div>
+
+                {newRuleType === 'pattern' ? (
+                  <div>
+                    <label className="setting-label" style={{ display: 'block', marginBottom: 4 }}>
+                      Regex Pattern
+                    </label>
+                    <input
+                      type="text"
+                      className="modal-input"
+                      style={{ width: '100%', padding: '8px 12px', background: '#0d0e11', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--accent-cyan)', fontFamily: 'monospace' }}
+                      placeholder="e.g. (?i)SELECT\s+\*"
+                      value={newRulePattern}
+                      onChange={(e) => setNewRulePattern(e.target.value)}
+                    />
+                    <small style={{ color: 'var(--text-muted)', fontSize: '0.68rem', marginTop: 4, display: 'block' }}>
+                      Tested case-insensitively against the SQL text before execution.
+                    </small>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="setting-label" style={{ display: 'block', marginBottom: 4 }}>
+                      Blacklisted Terms (Comma-Separated)
+                    </label>
+                    <input
+                      type="text"
+                      className="modal-input"
+                      style={{ width: '100%', padding: '8px 12px', background: '#0d0e11', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: '#ffffff' }}
+                      placeholder="e.g. PASSWORD, SECRET, SSN, API_KEY"
+                      value={newRuleKeywords}
+                      onChange={(e) => setNewRuleKeywords(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {customRuleError && (
+                  <div style={{ color: '#f87171', fontSize: '0.75rem', background: 'rgba(239, 68, 68, 0.15)', padding: '6px 10px', borderRadius: 4 }}>
+                    {customRuleError}
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={() => setCustomRuleModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Create Guardrail Rule
                 </button>
               </div>
             </form>
