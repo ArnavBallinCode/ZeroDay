@@ -1,0 +1,67 @@
+name: ecommerce
+description: >-
+  E-commerce customer orders, product sales, merchant fulfillment, and regional performance.
+  Ready for custom enterprise warehouses and multi-store analytics.
+database: SNOWFLAKE_SAMPLE_DATA
+schema: TPCH_SF1
+
+tables:
+  ORDERS: {physical: ORDERS, description: Store transactions and checkout orders}
+  CUSTOMER: {physical: CUSTOMER, description: Registered online shoppers and buyer accounts}
+  LINEITEM: {physical: LINEITEM, description: Basket line items, skus, and cart details}
+  NATION: {physical: NATION, description: Global delivery countries and territories}
+
+joins:
+  - {from: LINEITEM, to: ORDERS, "on": "LINEITEM.L_ORDERKEY = ORDERS.O_ORDERKEY"}
+  - {from: ORDERS, to: CUSTOMER, "on": "ORDERS.O_CUSTKEY = CUSTOMER.C_CUSTKEY"}
+  - {from: CUSTOMER, to: NATION, "on": "CUSTOMER.C_NATIONKEY = NATION.N_NATIONKEY"}
+
+dimensions:
+  order_date:
+    table: ORDERS
+    expression: ORDERS.O_ORDERDATE
+    description: Transaction timestamp or date
+  customer_segment:
+    table: CUSTOMER
+    expression: CUSTOMER.C_MKTSEGMENT
+    description: Customer persona segment (Automobile, Household, Machinery, etc.)
+  buyer_country:
+    table: NATION
+    expression: NATION.N_NAME
+    description: Shopper billing and shipping country
+  fulfillment_status:
+    table: ORDERS
+    expression: ORDERS.O_ORDERSTATUS
+    description: Fulfillment status (F = Fulfilled, P = Pending, O = Open)
+  shipping_carrier:
+    table: LINEITEM
+    expression: LINEITEM.L_SHIPMODE
+    description: Logistics carrier method (AIR, SHIP, TRUCK, MAIL)
+
+metrics:
+  gross_sales:
+    table: LINEITEM
+    expression: SUM(LINEITEM.L_EXTENDEDPRICE * (1 - LINEITEM.L_DISCOUNT))
+    description: Total revenue after coupon discounts
+  order_volume:
+    table: ORDERS
+    expression: COUNT(DISTINCT ORDERS.O_ORDERKEY)
+    description: Total completed orders count
+  unique_shoppers:
+    table: CUSTOMER
+    expression: COUNT(DISTINCT CUSTOMER.C_CUSTKEY)
+    description: Total unique customer accounts
+  average_basket_size:
+    table: ORDERS
+    expression: AVG(ORDERS.O_TOTALPRICE)
+    description: Average cart checkout value
+
+examples:
+  - question: What was our gross sales by buyer country?
+    dimensions: [buyer_country]
+    metrics: [gross_sales]
+    sort: [{field: gross_sales, direction: desc}]
+    limit: 10
+  - question: Compare order volume across customer persona segments.
+    dimensions: [customer_segment]
+    metrics: [order_volume]

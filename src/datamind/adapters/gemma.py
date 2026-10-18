@@ -15,7 +15,7 @@ class GemmaUnavailable(RuntimeError):
 class GemmaPlanner:
     """Uses a local Google Gemma model for semantic planning, never SQL execution."""
 
-    def __init__(self, base_url: str, model: str, timeout: float = 90.0):
+    def __init__(self, base_url: str, model: str, timeout: float = 300.0):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
@@ -71,6 +71,7 @@ Return JSON with one key, explanation, containing 2-4 concise sentences."""
                     "stream": False,
                     "format": schema,
                     "options": {"temperature": 0},
+                    "keep_alive": "60m",
                 },
                 timeout=self.timeout,
             )

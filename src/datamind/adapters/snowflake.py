@@ -14,9 +14,17 @@ from datamind.core.safety import validate_read_only
 
 
 class SnowflakeExecutor:
-    def __init__(self, settings: Settings, allowed_tables: set[str]):
+    def __init__(
+        self,
+        settings: Settings,
+        allowed_tables: set[str],
+        database: str | None = None,
+        schema: str | None = None,
+    ):
         self.settings = settings
         self.allowed_tables = allowed_tables
+        self.database = database or settings.snowflake_database
+        self.schema = schema or settings.snowflake_schema
 
     def execute(self, query: CompiledQuery) -> QueryResult:
         validate_read_only(query.sql, self.allowed_tables)
@@ -31,8 +39,8 @@ class SnowflakeExecutor:
             "user": self.settings.snowflake_user,
             "authenticator": self.settings.snowflake_authenticator,
             "warehouse": self.settings.snowflake_warehouse,
-            "database": self.settings.snowflake_database,
-            "schema": self.settings.snowflake_schema,
+            "database": self.database,
+            "schema": self.schema,
             "role": self.settings.snowflake_role,
             "session_parameters": {
                 "QUERY_TAG": "datamind:interactive:v0.1",
@@ -76,8 +84,8 @@ class SnowflakeExecutor:
             "statement": statement,
             "timeout": self.settings.statement_timeout_seconds,
             "warehouse": self.settings.snowflake_warehouse,
-            "database": self.settings.snowflake_database,
-            "schema": self.settings.snowflake_schema,
+            "database": self.database,
+            "schema": self.schema,
             "role": self.settings.snowflake_role,
             "parameters": {
                 "QUERY_TAG": "datamind:interactive:v0.1",

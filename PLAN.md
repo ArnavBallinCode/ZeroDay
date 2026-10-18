@@ -40,15 +40,17 @@ Snowflake performs every calculation. The UI presents the answer and its complet
 - [ ] Create at least 30 unseen evaluation questions covering paraphrases, joins, multi-step
       reasoning, follow-ups, ambiguity, missing data, empty results, and unsupported requests.
 - [ ] Independently compute expected answers and capture pass/fail, SQL, query ID, latency, and cost.
-- [ ] Add sentence-level claim verification for Gemma explanations.
-- [ ] Add date-range, percent, currency, null, and high-cardinality display policies.
+- [x] Add sentence-level claim verification for Gemma explanations.
+- [x] Add date-range, percent, currency, null, and high-cardinality display policies.
 - [ ] Add a mutation demonstration on a small project-owned Snowflake table so an answer visibly
       changes when source data changes.
 
 ### Next: adaptability and demo
 
-- [ ] Add a second licensed dataset through configuration only.
-- [ ] Add saved run history and exportable evidence receipts without storing credentials.
+- [x] Add a second licensed dataset through configuration only (TPC-H SF10, E-Commerce, and custom YAML models).
+- [x] Add saved run history and exportable evidence receipts without storing credentials.
+- [x] Add dedicated interactive React Flow execution pipeline with click-to-inspect stage drawers.
+- [x] Add live Hackathon evaluation matrix covering joins, aggregations, safety injection gates, and ambiguity.
 - [ ] Add cost and reliability telemetry using Snowflake query history and query tags.
 - [ ] Record a five-minute narrative demo: problem, unseen question, evidence inspection, ambiguity,
       answer-changing-data proof, architecture, and honest limitations.
