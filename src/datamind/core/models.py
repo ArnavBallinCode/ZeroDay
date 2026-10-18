@@ -69,6 +69,19 @@ class SentenceGrounding(BaseModel):
     matched_row_indexes: list[int] = Field(default_factory=list)
 
 
+class ExecutionStageTrace(BaseModel):
+    stage_number: int
+    id: str
+    title: str
+    component: str
+    description: str
+    status: Literal["passed", "blocked", "clarification", "warning"] = "passed"
+    elapsed_ms: int = 0
+    input_payload: dict[str, Any] = Field(default_factory=dict)
+    output_payload: dict[str, Any] = Field(default_factory=dict)
+    explanation: str = ""
+
+
 class AnswerEnvelope(BaseModel):
     question: str
     summary: str
@@ -79,3 +92,5 @@ class AnswerEnvelope(BaseModel):
     explanation: str
     sentence_grounding: list[SentenceGrounding] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+    execution_trace: list[ExecutionStageTrace] = Field(default_factory=list)
+

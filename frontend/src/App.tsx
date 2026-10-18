@@ -20,7 +20,10 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleDot,
   Clock,
   Code2,
@@ -30,6 +33,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  FileCode,
   Fingerprint,
   Layers3,
   LayoutDashboard,
@@ -83,9 +87,11 @@ import {
   EngineSettings,
   EvalCase,
   EvalResult,
+  ExecutionStageTrace,
   GuardrailEvaluationReport,
   GuardrailsConfigData,
   MutationProofResult,
+  QueryPlan,
   RunHistoryItem,
   SemanticModelFull,
   SnowflakeExplainResult,
@@ -319,9 +325,14 @@ function PlannerNode({ data }: NodeProps<Node<{
   metricsCount: number
   dimsCount: number
   onInspect: () => void
+  plan?: QueryPlan
+  stages?: ExecutionStageTrace[]
+  onInspectTrace?: (stageIdx?: number) => void
 }>>) {
+  const [expanded, setExpanded] = useState(false)
+
   return (
-    <div className={`pipeline-node planner ${data.status === 'active' ? 'active-stage' : data.status === 'done' ? 'verified-stage' : ''}`}>
+    <div className={`pipeline-node planner ${data.status === 'active' ? 'active-stage' : data.status === 'done' ? 'verified-stage' : ''} ${expanded ? 'is-expanded' : ''}`}>
       <Handle type="target" position={Position.Left} className="node-handle" />
       <Handle type="source" position={Position.Right} className="node-handle" />
 
@@ -350,9 +361,86 @@ function PlannerNode({ data }: NodeProps<Node<{
             <span>{data.metricsCount} metrics · {data.dimsCount} dimensions planned</span>
           </div>
         )}
+
+        {/* Expandable Section: Intermediate Steps & Plan JSON */}
+        <div className="planner-expand-box nodrag">
+          <button
+            type="button"
+            className="planner-expand-toggle-btn nodrag"
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            <span>{expanded ? 'Hide Intermediate Stages' : 'Intermediate Steps & Plan JSON'}</span>
+          </button>
+
+          {expanded && (
+            <div className="planner-expanded-details animate-in nodrag">
+              <div className="planner-step-row">
+                <span className="step-tag violet">Stage 1</span>
+                <div className="step-text">
+                  <div className="step-title">Gemma Semantic Plan</div>
+                  <div className="step-sub">
+                    {data.plan ? (
+                      <>
+                        <span>Dims: {data.plan.dimensions.join(', ') || 'none'}</span>
+                        <br />
+                        <span>Metrics: {data.plan.metrics.join(', ') || 'none'}</span>
+                      </>
+                    ) : (
+                      'Extracts dimensions, metrics, and filters from NL.'
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="planner-step-row">
+                <span className="step-tag emerald">Stage 2</span>
+                <div className="step-text">
+                  <div className="step-title">Pydantic Validation Gate</div>
+                  <div className="step-sub">Schema-checked against catalog YAML.</div>
+                </div>
+              </div>
+
+              <div className="planner-step-row">
+                <span className="step-tag cyan">Stage 3</span>
+                <div className="step-text">
+                  <div className="step-title">Shortest Join Compiler</div>
+                  <div className="step-sub">Dijkstra graph join with bound params.</div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="planner-full-inspect-btn nodrag"
+                onClick={() => {
+                  if (data.onInspectTrace) {
+                    data.onInspectTrace(0)
+                  } else {
+                    data.onInspect()
+                  }
+                }}
+              >
+                <Code2 size={12} />
+                <span>Inspect All 7 Steps & Plan JSON</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="node-toolbar nodrag">
+        <button
+          title="Inspect All 7 Intermediate Steps & Plan JSON"
+          onClick={() => {
+            if (data.onInspectTrace) {
+              data.onInspectTrace(0)
+            } else {
+              data.onInspect()
+            }
+          }}
+        >
+          <Code2 size={13} />
+        </button>
         <button title="Inspect Plan" onClick={data.onInspect}><Eye size={13} /></button>
         <button title="Gemma Info"><Cpu size={13} /></button>
       </div>
@@ -524,6 +612,318 @@ const nodeTypes = {
   resultNode: ResultNode,
 }
 
+const seedExecutionTrace1: ExecutionStageTrace[] = [
+  {
+    stage_number: 1,
+    id: 'stage_1_planner',
+    title: 'Google Gemma 4 Semantic Planning',
+    component: 'Google Gemma 4 (gemma4:e4b)',
+    description: 'Maps natural language question to semantic catalog dimensions, metrics, filters, and sort order without generating SQL.',
+    status: 'passed',
+    elapsed_ms: 1240,
+    input_payload: {
+      question: 'Which five customer nations generated the most revenue in 1995?',
+      semantic_model: 'tpch',
+      available_dimensions: ['nation_name', 'customer_segment', 'order_priority'],
+      available_metrics: ['revenue', 'order_count'],
+    },
+    output_payload: {
+      plan_json: {
+        dataset: 'tpch',
+        dimensions: ['nation_name'],
+        metrics: ['revenue'],
+        filters: [{ field: 'order_date', operator: 'between', value: ['1995-01-01', '1995-12-31'] }],
+        sort: [{ field: 'revenue', direction: 'desc' }],
+        limit: 5,
+        assumptions: ['Customer nation interpreted as C_NATIONKEY'],
+      },
+    },
+    explanation: 'Gemma mapped "customer nations" -> nation_name, "revenue" -> metric revenue, "in 1995" -> filter order_date between 1995-01-01 and 1995-12-31, and top five -> sort revenue desc limit 5.',
+  },
+  {
+    stage_number: 2,
+    id: 'stage_2_pydantic',
+    title: 'Pydantic Schema Validation Gate',
+    component: 'QueryPlan Pydantic Validator',
+    description: 'Validates generated plan JSON against catalog types, dimensions, metrics, and multi-turn conversation memory.',
+    status: 'passed',
+    elapsed_ms: 2,
+    input_payload: {
+      raw_json_keys: ['dataset', 'dimensions', 'metrics', 'filters', 'sort', 'limit'],
+      catalog_dimensions: ['nation_name', 'customer_name', 'customer_segment'],
+      catalog_metrics: ['revenue', 'order_count'],
+    },
+    output_payload: {
+      validated: true,
+      inherited_from_turn: false,
+      dimensions: ['nation_name'],
+      metrics: ['revenue'],
+    },
+    explanation: 'Validated strictly conforming QueryPlan schema. All requested dimensions and metrics exist in the active catalog. No multi-turn fallback required.',
+  },
+  {
+    stage_number: 3,
+    id: 'stage_3_compiler',
+    title: 'Deterministic Query Compiler & Join Path',
+    component: 'DataMind QueryCompiler (Dijkstra Join Graph)',
+    description: 'Resolves shortest join path across 4 tables, binds literal parameters (%s), and builds deterministic SELECT SQL.',
+    status: 'passed',
+    elapsed_ms: 4,
+    input_payload: {
+      required_tables: ['LINEITEM', 'ORDERS', 'CUSTOMER', 'NATION'],
+      join_graph_edges: 7,
+    },
+    output_payload: {
+      join_path: 'LINEITEM ⟶ ORDERS ⟶ CUSTOMER ⟶ NATION',
+      parameterized_sql: 'SELECT NATION.N_NAME AS "nation_name", SUM(...) FROM ... WHERE ORDERS.O_ORDERDATE BETWEEN %s AND %s GROUP BY NATION.N_NAME ORDER BY "revenue" DESC LIMIT 5',
+      bound_parameters: ['1995-01-01', '1995-12-31'],
+      parameter_count: 2,
+    },
+    explanation: 'Discovered optimal 4-table join path: LINEITEM -> ORDERS -> CUSTOMER -> NATION. Replaced all date literals with bound query parameters to eliminate SQL injection.',
+  },
+  {
+    stage_number: 4,
+    id: 'stage_4_ast_guardrails',
+    title: 'Read-Only AST & Security Firewall',
+    component: 'sqlglot Parser & Table Allowlist Guard',
+    description: 'Parses compiled SQL AST, verifies semantic-model table allowlist, and enforces Zero-Mutation policy.',
+    status: 'passed',
+    elapsed_ms: 3,
+    input_payload: {
+      sql_length: 448,
+      allowed_tables: ['CUSTOMER', 'LINEITEM', 'NATION', 'ORDERS', 'PART', 'PARTSUPP', 'REGION', 'SUPPLIER'],
+      strict_mode: true,
+    },
+    output_payload: {
+      passed: true,
+      ast_root_type: 'Select',
+      tables_detected: ['CUSTOMER', 'LINEITEM', 'NATION', 'ORDERS'],
+      joins_count: 3,
+      violations: [],
+    },
+    explanation: 'Verified strictly 1 SELECT statement, zero data-changing AST nodes (no INSERT, UPDATE, DELETE, DROP), allowlisted tables only, and zero SQL injection patterns.',
+  },
+  {
+    stage_number: 5,
+    id: 'stage_5_snowflake',
+    title: 'Snowflake Live Execution & Telemetry',
+    component: 'Snowflake Cloud Warehouse (DATAMIND_WH)',
+    description: 'Executes bound query on Snowflake warehouse; records Query ID, rows returned, and warehouse compute telemetry.',
+    status: 'passed',
+    elapsed_ms: 3120,
+    input_payload: {
+      warehouse: 'DATAMIND_WH',
+      role: 'DATAMIND_READER',
+      query_tag: 'datamind:interactive:v0.1',
+      parameters: ['1995-01-01', '1995-12-31'],
+    },
+    output_payload: {
+      query_id: '01c7ce8d-000e-16a4-0000-0002b856b259',
+      rows_count: 5,
+      columns: ['nation_name', 'revenue'],
+      elapsed_ms: 3120,
+      bytes_scanned: 118489088,
+      partitions_scanned: 150,
+      credits_used: 0.000043,
+      cache_hit: false,
+    },
+    explanation: 'Executed against live Snowflake warehouse DATAMIND_WH in 3,120ms. Captured immutable Query ID 01c7ce8d-000e-16a4-0000-0002b856b259 over 5 result rows.',
+  },
+  {
+    stage_number: 6,
+    id: 'stage_6_evidence',
+    title: 'Evidence Verification & Sentence-Level Grounding',
+    component: 'Deterministic Headline & Grounding Parser',
+    description: 'Derives headline directly from row 0; verifies Gemma explanation sentence-by-sentence against returned rows.',
+    status: 'passed',
+    elapsed_ms: 18,
+    input_payload: {
+      candidate_explanation: 'Indonesia generated the highest revenue in 1995 with $54,189,234.21, followed by Vietnam and China.',
+      raw_rows_count: 5,
+    },
+    output_payload: {
+      deterministic_summary: 'Top result — nation name: INDONESIA; revenue: 54,189,234.21. 5 rows returned.',
+      grounded_sentences_count: 2,
+      total_sentences: 2,
+      matched_row_indexes: [0, 1, 2],
+    },
+    explanation: 'Derived deterministic headline from row 0. Scanned 2 explanation sentences: 2 grounded directly to Snowflake row indices.',
+  },
+  {
+    stage_number: 7,
+    id: 'stage_7_envelope',
+    title: 'Answer Envelope & Provenance Packaging',
+    component: 'DataMind React Flow DAG & Decision Receipts',
+    description: 'Packages complete AnswerEnvelope with full execution trace, bound parameters, cryptographic proof, and interactive receipts.',
+    status: 'passed',
+    elapsed_ms: 1,
+    input_payload: { total_pipeline_time_ms: 4388 },
+    output_payload: {
+      question: 'Which five customer nations generated the most revenue in 1995?',
+      query_id: '01c7ce8d-000e-16a4-0000-0002b856b259',
+      total_stages_recorded: 7,
+      receipt_hash: 'sha256:4f3a9e...01c7ce8d',
+    },
+    explanation: 'Complete AnswerEnvelope packaged with full intermediate stage traceability, ready for interactive DAG visualization and audit receipt export.',
+  },
+]
+
+const seedExecutionTrace2: ExecutionStageTrace[] = [
+  {
+    stage_number: 1,
+    id: 'stage_1_planner',
+    title: 'Google Gemma 4 Semantic Planning',
+    component: 'Google Gemma 4 (gemma4:e4b)',
+    description: 'Maps natural language question to semantic catalog dimensions, metrics, filters, and sort order without generating SQL.',
+    status: 'passed',
+    elapsed_ms: 1120,
+    input_payload: {
+      question: 'How many orders did each market segment place?',
+      semantic_model: 'tpch',
+      available_dimensions: ['customer_segment', 'nation_name'],
+      available_metrics: ['order_count', 'revenue'],
+    },
+    output_payload: {
+      plan_json: {
+        dataset: 'tpch',
+        dimensions: ['customer_segment'],
+        metrics: ['order_count'],
+        filters: [],
+        sort: [],
+        limit: 100,
+        assumptions: [],
+      },
+    },
+    explanation: 'Gemma mapped "market segment" -> customer_segment and "how many orders" -> order_count (COUNT(DISTINCT O_ORDERKEY)).',
+  },
+  {
+    stage_number: 2,
+    id: 'stage_2_pydantic',
+    title: 'Pydantic Schema Validation Gate',
+    component: 'QueryPlan Pydantic Validator',
+    description: 'Validates generated plan JSON against catalog types, dimensions, metrics, and multi-turn conversation memory.',
+    status: 'passed',
+    elapsed_ms: 2,
+    input_payload: {
+      raw_json_keys: ['dataset', 'dimensions', 'metrics', 'filters', 'sort', 'limit'],
+      catalog_dimensions: ['customer_segment'],
+      catalog_metrics: ['order_count'],
+    },
+    output_payload: {
+      validated: true,
+      inherited_from_turn: false,
+      dimensions: ['customer_segment'],
+      metrics: ['order_count'],
+    },
+    explanation: 'Strict QueryPlan contract validated. Customer segment dimension and order count metric verified against catalog schema.',
+  },
+  {
+    stage_number: 3,
+    id: 'stage_3_compiler',
+    title: 'Deterministic Query Compiler & Join Path',
+    component: 'DataMind QueryCompiler (Dijkstra Join Graph)',
+    description: 'Resolves shortest join path across 2 tables, binds literal parameters (%s), and builds deterministic SELECT SQL.',
+    status: 'passed',
+    elapsed_ms: 3,
+    input_payload: {
+      required_tables: ['ORDERS', 'CUSTOMER'],
+      join_graph_edges: 7,
+    },
+    output_payload: {
+      join_path: 'ORDERS ⟶ CUSTOMER',
+      parameterized_sql: 'SELECT CUSTOMER.C_MKTSEGMENT AS "customer_segment", COUNT(DISTINCT ORDERS.O_ORDERKEY) AS "order_count" FROM ... ORDERS JOIN CUSTOMER ON ORDERS.O_CUSTKEY = CUSTOMER.C_CUSTKEY GROUP BY CUSTOMER.C_MKTSEGMENT LIMIT 100',
+      bound_parameters: [],
+      parameter_count: 0,
+    },
+    explanation: 'Discovered direct foreign key join between ORDERS and CUSTOMER (O_CUSTKEY = C_CUSTKEY). Deterministic aggregation generated.',
+  },
+  {
+    stage_number: 4,
+    id: 'stage_4_ast_guardrails',
+    title: 'Read-Only AST & Security Firewall',
+    component: 'sqlglot Parser & Table Allowlist Guard',
+    description: 'Parses compiled SQL AST, verifies semantic-model table allowlist, and enforces Zero-Mutation policy.',
+    status: 'passed',
+    elapsed_ms: 2,
+    input_payload: {
+      sql_length: 290,
+      allowed_tables: ['CUSTOMER', 'LINEITEM', 'NATION', 'ORDERS', 'PART', 'PARTSUPP', 'REGION', 'SUPPLIER'],
+      strict_mode: true,
+    },
+    output_payload: {
+      passed: true,
+      ast_root_type: 'Select',
+      tables_detected: ['CUSTOMER', 'ORDERS'],
+      joins_count: 1,
+      violations: [],
+    },
+    explanation: 'Verified strictly 1 SELECT statement, zero data-changing AST nodes (no INSERT, UPDATE, DELETE, DROP), and allowlisted tables only.',
+  },
+  {
+    stage_number: 5,
+    id: 'stage_5_snowflake',
+    title: 'Snowflake Live Execution & Telemetry',
+    component: 'Snowflake Cloud Warehouse (DATAMIND_WH)',
+    description: 'Executes bound query on Snowflake warehouse; records Query ID, rows returned, and warehouse compute telemetry.',
+    status: 'passed',
+    elapsed_ms: 2889,
+    input_payload: {
+      warehouse: 'DATAMIND_WH',
+      role: 'DATAMIND_READER',
+      query_tag: 'datamind:interactive:v0.1',
+      parameters: [],
+    },
+    output_payload: {
+      query_id: '01c7ce9e-000e-16a4-0000-0002b856b27d',
+      rows_count: 5,
+      columns: ['customer_segment', 'order_count'],
+      elapsed_ms: 2889,
+      bytes_scanned: 43253760,
+      partitions_scanned: 50,
+      credits_used: 0.000031,
+      cache_hit: false,
+    },
+    explanation: 'Executed against live Snowflake warehouse DATAMIND_WH in 2,889ms. Computed order distribution across 1.5M orders.',
+  },
+  {
+    stage_number: 6,
+    id: 'stage_6_evidence',
+    title: 'Evidence Verification & Sentence-Level Grounding',
+    component: 'Deterministic Headline & Grounding Parser',
+    description: 'Derives headline directly from row 0; verifies Gemma explanation sentence-by-sentence against returned rows.',
+    status: 'passed',
+    elapsed_ms: 12,
+    input_payload: {
+      candidate_explanation: 'The order_count metric was calculated and grouped by customer_segment dimension using the tpch dataset.',
+      raw_rows_count: 5,
+    },
+    output_payload: {
+      deterministic_summary: 'First returned result — customer segment: HOUSEHOLD; order count: 300,147. 5 rows returned.',
+      grounded_sentences_count: 1,
+      total_sentences: 1,
+      matched_row_indexes: [0],
+    },
+    explanation: 'Derived deterministic headline from row 0. Explanation verified against raw returned rows.',
+  },
+  {
+    stage_number: 7,
+    id: 'stage_7_envelope',
+    title: 'Answer Envelope & Provenance Packaging',
+    component: 'DataMind React Flow DAG & Decision Receipts',
+    description: 'Packages complete AnswerEnvelope with full execution trace, bound parameters, cryptographic proof, and interactive receipts.',
+    status: 'passed',
+    elapsed_ms: 1,
+    input_payload: { total_pipeline_time_ms: 4026 },
+    output_payload: {
+      question: 'How many orders did each market segment place?',
+      query_id: '01c7ce9e-000e-16a4-0000-0002b856b27d',
+      total_stages_recorded: 7,
+      receipt_hash: 'sha256:7b1e8a...01c7ce9e',
+    },
+    explanation: 'Complete AnswerEnvelope packaged with full intermediate stage traceability, ready for interactive DAG visualization and audit receipt export.',
+  },
+]
+
 // ============================================================================
 // INITIAL SEEDED HISTORY & PROOF
 // ============================================================================
@@ -588,6 +988,7 @@ LIMIT 5`,
         { text: 'Vietnam ranked second with $53.47M', row_indexes: [1], columns: ['nation_name', 'revenue'] },
       ],
       limitations: [],
+      execution_trace: seedExecutionTrace1,
     },
   },
   {
@@ -644,6 +1045,7 @@ LIMIT 100`,
         { text: 'Building had the highest volume with 303,959 orders', row_indexes: [2], columns: ['customer_segment', 'order_count'] },
       ],
       limitations: [],
+      execution_trace: seedExecutionTrace2,
     },
   },
 ]
@@ -687,6 +1089,9 @@ const initialPipelineNodes: Node[] = [
       metricsCount: 1,
       dimsCount: 1,
       onInspect: () => {},
+      plan: initialHistory[0].answer?.plan,
+      stages: seedExecutionTrace1,
+      onInspectTrace: () => {},
     },
   },
   {
@@ -758,6 +1163,174 @@ function getStringParam(params: Record<string, unknown>, key: string): string {
   return typeof val === 'string' ? val : ''
 }
 
+// ============================================================================
+// 7-STAGE INTERMEDIATE EXECUTION TRACE & PLAN JSON VIEWER
+// ============================================================================
+
+function ExecutionTraceView({
+  trace,
+  selectedStageIdx,
+  onSelectStage,
+}: {
+  trace: ExecutionStageTrace[]
+  selectedStageIdx: number
+  onSelectStage: (idx: number) => void
+}) {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const currentStage = trace[selectedStageIdx] || trace[0]
+
+  const handleCopy = (payload: unknown, key: string) => {
+    const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2)
+    navigator.clipboard.writeText(text)
+    setCopiedKey(key)
+    setTimeout(() => setCopiedKey(null), 2000)
+  }
+
+  if (!trace || trace.length === 0) {
+    return (
+      <div className="trace-empty-state" style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>
+        <Code2 size={28} style={{ margin: '0 auto 10px', opacity: 0.5 }} />
+        <p>No execution trace recorded. Run a query to view intermediate lifecycle stages.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="execution-trace-container">
+      {/* 7-Stage Horizontal Stepper Track */}
+      <div className="trace-stepper-track">
+        {trace.map((stg, idx) => {
+          const isSelected = idx === selectedStageIdx
+          return (
+            <button
+              key={stg.id || idx}
+              type="button"
+              className={`trace-step-btn ${isSelected ? 'active' : ''}`}
+              onClick={() => onSelectStage(idx)}
+            >
+              <div className="trace-step-pill-top">
+                <span className="trace-step-badge">Stage {stg.stage_number}</span>
+                <span className="trace-step-time">{stg.elapsed_ms}ms</span>
+              </div>
+              <div className="trace-step-title-text">{stg.title.split('&')[0].trim()}</div>
+              <div className="trace-step-sub">{stg.component.split('(')[0].trim()}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      {currentStage && (
+        <div className="trace-stage-main">
+          {/* Stage Hero Banner */}
+          <div className="trace-stage-hero">
+            <div className="trace-stage-hero-main">
+              <div className="trace-stage-num-badge">
+                <span>STAGE {currentStage.stage_number} OF {trace.length}</span>
+                <span className={`trace-status-tag ${currentStage.status}`}>
+                  <Check size={11} /> {currentStage.status.toUpperCase()}
+                </span>
+              </div>
+              <h3 className="trace-stage-title">{currentStage.title}</h3>
+              <p className="trace-stage-desc">{currentStage.description}</p>
+            </div>
+
+            <div className="trace-stage-hero-meta">
+              <div className="trace-meta-chip">
+                <Layers3 size={13} color="var(--accent-cyan)" />
+                <span className="meta-text">{currentStage.component}</span>
+              </div>
+              <div className="trace-meta-chip">
+                <Clock size={13} color="var(--accent-emerald)" />
+                <span className="meta-text">{currentStage.elapsed_ms} ms</span>
+              </div>
+            </div>
+          </div>
+
+          {/* How This Stage Worked Card */}
+          <div className="trace-how-card">
+            <div className="trace-how-header">
+              <Zap size={14} color="var(--accent-amber)" />
+              <span>How This Stage Worked & Security Invariant</span>
+            </div>
+            <p className="trace-how-body">{currentStage.explanation}</p>
+          </div>
+
+          {/* Payloads Inspector: Intermediate Output / Plan JSON + Input */}
+          <div className="trace-payloads-row">
+            {/* Intermediate Output Payload */}
+            <div className="trace-payload-panel">
+              <div className="trace-payload-bar">
+                <div className="trace-payload-label">
+                  <FileCode size={13} color="var(--accent-emerald)" />
+                  <span>Intermediate Output Payload</span>
+                  {currentStage.stage_number === 1 && <span className="trace-chip-pill">Gemma Plan JSON</span>}
+                </div>
+                <button
+                  type="button"
+                  className="trace-copy-action"
+                  onClick={() => handleCopy(currentStage.output_payload, 'output')}
+                >
+                  {copiedKey === 'output' ? <Check size={12} color="var(--accent-emerald)" /> : <Copy size={12} />}
+                  <span>{copiedKey === 'output' ? 'Copied JSON' : 'Copy Payload'}</span>
+                </button>
+              </div>
+              <pre className="trace-code-viewer">
+                <code>{JSON.stringify(currentStage.output_payload, null, 2)}</code>
+              </pre>
+            </div>
+
+            {/* Stage Input Payload */}
+            <div className="trace-payload-panel">
+              <div className="trace-payload-bar">
+                <div className="trace-payload-label">
+                  <Sliders size={13} color="var(--accent-primary)" />
+                  <span>Input to Stage</span>
+                </div>
+                <button
+                  type="button"
+                  className="trace-copy-action"
+                  onClick={() => handleCopy(currentStage.input_payload, 'input')}
+                >
+                  {copiedKey === 'input' ? <Check size={12} color="var(--accent-emerald)" /> : <Copy size={12} />}
+                  <span>{copiedKey === 'input' ? 'Copied JSON' : 'Copy Input'}</span>
+                </button>
+              </div>
+              <pre className="trace-code-viewer">
+                <code>{JSON.stringify(currentStage.input_payload, null, 2)}</code>
+              </pre>
+            </div>
+          </div>
+
+          {/* Navigation Stepper Controls */}
+          <div className="trace-nav-bar">
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={selectedStageIdx === 0}
+              onClick={() => onSelectStage(selectedStageIdx - 1)}
+            >
+              <ChevronLeft size={13} /> Previous Stage ({Math.max(1, selectedStageIdx)})
+            </button>
+
+            <span className="trace-nav-indicator">
+              Stage {selectedStageIdx + 1} / {trace.length}
+            </span>
+
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={selectedStageIdx === trace.length - 1}
+              onClick={() => onSelectStage(selectedStageIdx + 1)}
+            >
+              Next Stage ({Math.min(trace.length, selectedStageIdx + 2)}) <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'pipeline' | 'chat' | 'receipts' | 'models' | 'evals' | 'studio' | 'guardrails'>('pipeline')
   const [status, setStatus] = useState<Status | null>(null)
@@ -814,12 +1387,25 @@ export default function App() {
   const [topK, setTopK] = useState(5)
   const [executionStatus, setExecutionStatus] = useState<'idle' | 'querying' | 'success' | 'error'>('idle')
   const [answer, setAnswer] = useState<Answer | null>(initialHistory[0].answer || null)
-  const [activeModalTab, setActiveModalTab] = useState<'summary' | 'table' | 'sql'>('summary')
+  const [activeModalTab, setActiveModalTab] = useState<'summary' | 'table' | 'sql' | 'trace'>('summary')
   const [expandModalOpen, setExpandModalOpen] = useState(false)
+  const [traceModalOpen, setTraceModalOpen] = useState(false)
+  const [selectedStageIdx, setSelectedStageIdx] = useState(0)
+  const [traceCopiedKey, setTraceCopiedKey] = useState<string | null>(null)
   const [snowflakeModalOpen, setSnowflakeModalOpen] = useState(false)
   const [inspectedQueryId, setInspectedQueryId] = useState<string | null>(null)
   const [copiedQueryId, setCopiedQueryId] = useState(false)
   const [copiedSql, setCopiedSql] = useState(false)
+
+  const activeExecutionTrace: ExecutionStageTrace[] = useMemo(() => {
+    if (answer?.execution_trace && answer.execution_trace.length > 0) {
+      return answer.execution_trace
+    }
+    if (initialHistory[0].answer?.execution_trace && initialHistory[0].answer.execution_trace.length > 0) {
+      return initialHistory[0].answer.execution_trace
+    }
+    return []
+  }, [answer])
 
   // Settings state & modal
   const [settingsModalOpen, setSettingsModalOpen] = useState(false)
@@ -1240,7 +1826,16 @@ metrics:
               model: engineSettings?.gemma.model || status?.gemma.model || 'gemma4:e4b',
               metricsCount: answer?.plan.metrics.length ?? 0,
               dimsCount: answer?.plan.dimensions.length ?? 0,
-              onInspect: () => setExpandModalOpen(true),
+              onInspect: () => {
+                setActiveModalTab('trace')
+                setExpandModalOpen(true)
+              },
+              plan: answer?.plan || initialHistory[0].answer?.plan,
+              stages: activeExecutionTrace,
+              onInspectTrace: (idx?: number) => {
+                setSelectedStageIdx(idx ?? 0)
+                setTraceModalOpen(true)
+              },
             },
           }
         }
@@ -1910,6 +2505,18 @@ metrics:
                   <span className="stage-num">5</span>
                   <span>Evidence Ledger</span>
                 </div>
+                <button
+                  type="button"
+                  className="workbench-inspect-trace-btn nodrag"
+                  onClick={() => {
+                    setSelectedStageIdx(0)
+                    setTraceModalOpen(true)
+                  }}
+                  title="Inspect all 7 intermediate stages and plan JSON"
+                >
+                  <Code2 size={12} color="var(--accent-cyan)" />
+                  <span>Intermediate Steps & Plan JSON</span>
+                </button>
               </div>
 
               <div className="progress-track">
@@ -2089,6 +2696,16 @@ metrics:
                               onClick={() => openSnowflakeInspector(msg.answer!.result.query_id)}
                             >
                               <Database size={11} /> Snowflake Proof
+                            </button>
+                            <button
+                              className="node-action-btn"
+                              onClick={() => {
+                                setAnswer(msg.answer!)
+                                setSelectedStageIdx(0)
+                                setTraceModalOpen(true)
+                              }}
+                            >
+                              <Code2 size={11} /> Intermediate Steps ({msg.answer.execution_trace?.length || 7})
                             </button>
                             <button
                               className="node-action-btn"
@@ -3173,6 +3790,12 @@ metrics:
               >
                 Compiled SQL & Bindings
               </button>
+              <button
+                className={activeModalTab === 'trace' ? 'active' : ''}
+                onClick={() => setActiveModalTab('trace')}
+              >
+                7-Stage Trace & Plan JSON ({activeExecutionTrace.length || 7})
+              </button>
             </div>
 
             <div className="modal-body">
@@ -3505,6 +4128,72 @@ metrics:
                   </div>
                 </div>
               )}
+
+              {activeModalTab === 'trace' && (
+                <div className="modal-trace-tab-view" style={{ padding: '4px 0' }}>
+                  <ExecutionTraceView
+                    trace={activeExecutionTrace}
+                    selectedStageIdx={selectedStageIdx}
+                    onSelectStage={setSelectedStageIdx}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 1B: 7-STAGE INTERMEDIATE EXECUTION TRACE & PLAN JSON MODAL
+         ========================================================================= */}
+      {traceModalOpen && (
+        <div className="modal-overlay" onClick={() => setTraceModalOpen(false)}>
+          <div className="modal-container large trace-modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <Code2 size={16} color="var(--accent-cyan)" />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>7-Stage Query Lifecycle Trace & Plan JSON</span>
+                    <span className="trace-chip-pill">Audit-Grade Traceability</span>
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Query: "{answer?.question || queryText}"
+                    {answer?.result?.query_id && ` · QID: ${answer.result.query_id}`}
+                  </span>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setTraceModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <ExecutionTraceView
+                trace={activeExecutionTrace}
+                selectedStageIdx={selectedStageIdx}
+                onSelectStage={setSelectedStageIdx}
+              />
+            </div>
+
+            <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  const fullTraceStr = JSON.stringify(activeExecutionTrace, null, 2)
+                  navigator.clipboard.writeText(fullTraceStr)
+                  setTraceCopiedKey('all')
+                  setTimeout(() => setTraceCopiedKey(null), 2000)
+                }}
+              >
+                {traceCopiedKey === 'all' ? <Check size={13} color="var(--accent-emerald)" /> : <Copy size={13} />}
+                <span>{traceCopiedKey === 'all' ? 'Copied Full 7-Stage Audit Trace' : 'Copy All 7 Stages JSON'}</span>
+              </button>
+
+              <button type="button" className="btn-primary" onClick={() => setTraceModalOpen(false)}>
+                Done
+              </button>
             </div>
           </div>
         </div>

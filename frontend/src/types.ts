@@ -38,6 +38,19 @@ export type SentenceGrounding = {
   matched_row_indexes: number[]
 }
 
+export type ExecutionStageTrace = {
+  stage_number: number
+  id: string
+  title: string
+  component: string
+  description: string
+  status: 'passed' | 'blocked' | 'clarification' | 'warning'
+  elapsed_ms: number
+  input_payload: Record<string, unknown>
+  output_payload: Record<string, unknown>
+  explanation: string
+}
+
 export type Answer = {
   question: string
   summary: string
@@ -64,6 +77,7 @@ export type Answer = {
   }
   claims?: Claim[]
   sentence_grounding?: SentenceGrounding[]
+  execution_trace?: ExecutionStageTrace[]
   limitations: string[]
 }
 
