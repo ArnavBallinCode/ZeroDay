@@ -12,6 +12,8 @@ tables:
   NATION: {physical: NATION, description: Customer and supplier nations}
   REGION: {physical: REGION, description: Geographic regions}
   SUPPLIER: {physical: SUPPLIER, description: Part suppliers}
+  SUPPLIER_NATION: {physical: NATION, description: Nations associated with suppliers}
+  SUPPLIER_REGION: {physical: REGION, description: Geographic regions associated with suppliers}
   PART: {physical: PART, description: Product catalog}
   PARTSUPP: {physical: PARTSUPP, description: Supplier-part relationships}
 
@@ -21,6 +23,8 @@ joins:
   - {from: CUSTOMER, to: NATION, "on": "CUSTOMER.C_NATIONKEY = NATION.N_NATIONKEY"}
   - {from: NATION, to: REGION, "on": "NATION.N_REGIONKEY = REGION.R_REGIONKEY"}
   - {from: LINEITEM, to: SUPPLIER, "on": "LINEITEM.L_SUPPKEY = SUPPLIER.S_SUPPKEY"}
+  - {from: SUPPLIER, to: SUPPLIER_NATION, "on": "SUPPLIER.S_NATIONKEY = SUPPLIER_NATION.N_NATIONKEY"}
+  - {from: SUPPLIER_NATION, to: SUPPLIER_REGION, "on": "SUPPLIER_NATION.N_REGIONKEY = SUPPLIER_REGION.R_REGIONKEY"}
   - {from: LINEITEM, to: PART, "on": "LINEITEM.L_PARTKEY = PART.P_PARTKEY"}
   - {from: PART, to: PARTSUPP, "on": "PART.P_PARTKEY = PARTSUPP.PS_PARTKEY"}
 
@@ -73,6 +77,14 @@ dimensions:
     table: SUPPLIER
     expression: SUPPLIER.S_NAME
     description: Supplier name
+  supplier_nation_name:
+    table: SUPPLIER_NATION
+    expression: SUPPLIER_NATION.N_NAME
+    description: Supplier nation name; use for supplier questions instead of customer nation_name
+  supplier_region_name:
+    table: SUPPLIER_REGION
+    expression: SUPPLIER_REGION.R_NAME
+    description: Supplier geographic region; use for supplier questions instead of customer region_name
   part_name:
     table: PART
     expression: PART.P_NAME
@@ -119,6 +131,14 @@ metrics:
     table: PARTSUPP
     expression: SUM(PARTSUPP.PS_SUPPLYCOST * PARTSUPP.PS_AVAILQTY)
     description: Total catalog supply cost times available quantity
+  supplier_account_balance:
+    table: SUPPLIER
+    expression: MAX(SUPPLIER.S_ACCTBAL)
+    description: Supplier account balance; use for supplier balance rankings, including negative balances
+  customer_account_balance:
+    table: CUSTOMER
+    expression: MAX(CUSTOMER.C_ACCTBAL)
+    description: Customer account balance; use for customer balance rankings, including negative balances
 
 examples:
   - question: Which five customer nations generated the most revenue in 1995?

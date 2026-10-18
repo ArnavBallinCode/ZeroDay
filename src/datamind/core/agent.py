@@ -84,6 +84,7 @@ class DataMindAgent:
                     explanation=f'Resolved latest {count} available years as {year_range[0]}–{year_range[1]}.'))
         plan = self.planner.plan(question, prompt_schema, context, previous_plan)
         self._scope_plan_to_active_catalog(plan)
+        self._reconcile_explicit_intent(question, plan)
         if year_range:
             plan.filters = [f for f in plan.filters if f.field not in ('order_year', 'order_date', 'order_month')]
             plan.filters.append(Filter(field='order_year', operator='between', value=year_range))
@@ -113,6 +114,7 @@ class DataMindAgent:
                                  'rejected_plan': plan.model_dump()}
                 plan = self.planner.plan(question, repair_schema, context, previous_plan)
                 self._scope_plan_to_active_catalog(plan)
+                self._reconcile_explicit_intent(question, plan)
         t1 = time.perf_counter()
         stage1_ms = max(1, int((t1 - t0) * 1000))
 
@@ -408,3 +410,82 @@ class DataMindAgent:
                 f"Planner emitted dataset {emitted_dataset!r}; execution was scoped to the "
                 f"active semantic model {self.catalog.name!r}."
             )
+
+    def _reconcile_explicit_intent(self, question: str, plan: QueryPlan) -> None:
+        """Correct explicit catalog mappings without replacing Gemma's semantic role."""
+        q_lower = question.lower()
+        metric_vocabulary = {
+            name.lower() for name in self.catalog.metrics
+        } | {
+            spec.description.lower() for spec in self.catalog.metrics.values()
+        }
+        if re.search(r'\bloss(?:es)?\b', q_lower) and not any(
+            'loss' in item or 'profit' in item for item in metric_vocabulary
+        ):
+            plan.clarification = (
+                "'Loss' is not defined in the selected dataset. Do you mean the lowest supplier "
+                "account balance, the lowest revenue, or revenue associated with returned items?"
+            )
+            plan.suggested_questions = [
+                'Show 10 suppliers with the lowest account balance',
+                'Which five customer nations generated the least revenue?',
+                'Show revenue by return status',
+            ]
+            return
+
+        # Vague subjective superlatives without an explicit metric require clarification.
+        if re.search(r'\b(?:best|worst|most valuable|top performing)\s+customers?\b', q_lower) or (
+            re.search(r'\b(?:who|which)\s+(?:is|are|was|were)\s+(?:the\s+)?(?:best|worst)\b', q_lower)
+            and not any(m in q_lower for m in ('revenue', 'sales', 'turnover', 'spend', 'order', 'orders', 'balance', 'cost', 'supplier', 'suppliers', 'nation', 'nations'))
+        ):
+            plan.clarification = (
+                "The term 'best customer' is ambiguous without specifying a metric. Did you mean customers "
+                "with the highest total revenue, the most orders placed, or the highest account balance?"
+            )
+            plan.suggested_questions = [
+                'Top 10 customers by revenue overall',
+                'Top 10 customers by order count',
+                'Top 10 customers by account balance',
+            ]
+            return
+
+        supplier_balance = (
+            re.search(r'\bsuppliers?\b', q_lower)
+            and re.search(r'\b(?:account\s+)?balance\b', q_lower)
+            and 'supplier_account_balance' in self.catalog.metrics
+        )
+        if not supplier_balance:
+            return
+
+        plan.dimensions = ['supplier_name']
+        plan.metrics = ['supplier_account_balance']
+        region_values = {'AFRICA', 'AMERICA', 'ASIA', 'EUROPE', 'MIDDLE EAST'}
+        region_match = re.search(r'\b(?:in|from)\s+(middle east|africa|america|asia|europe)\b', q_lower)
+        reconciled_filters: list[Filter] = []
+        has_supplier_region = False
+        for item in plan.filters:
+            value_text = str(item.value).strip().upper()
+            if item.field in {
+                'nation_name', 'region_name', 'supplier_nation_name', 'supplier_region_name'
+            }:
+                values = item.value if isinstance(item.value, list) else [item.value]
+                explicitly_named = any(str(value).lower() in q_lower for value in values)
+                if region_match and not explicitly_named:
+                    continue
+                if item.field in {'region_name', 'supplier_region_name'} or value_text in region_values:
+                    item = item.model_copy(update={'field': 'supplier_region_name'})
+                    has_supplier_region = True
+                else:
+                    item = item.model_copy(update={'field': 'supplier_nation_name'})
+            reconciled_filters.append(item)
+        if not has_supplier_region and region_match:
+            reconciled_filters.append(Filter(
+                field='supplier_region_name', operator='eq', value=region_match[1].upper()))
+        plan.filters = reconciled_filters
+        direction = 'asc' if re.search(r'\b(?:lowest|least|smallest|minimum|min)\b', q_lower) else 'desc'
+        plan.sort = [Sort(field='supplier_account_balance', direction=direction)]
+        if re.search(r'\btop\s+suppliers?\b', q_lower):
+            plan.limit = 10
+        plan.assumptions.append(
+            'Mapped supplier account balance and geography to supplier-specific Snowflake fields.'
+        )
