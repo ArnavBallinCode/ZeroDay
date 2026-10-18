@@ -53,7 +53,8 @@ class SnowflakeExecutor:
             self.query_tag = query_tag
 
     def explain(self, sql: str) -> dict[str, Any]:
-        validate_read_only(sql, self.allowed_tables, guardrails=self.guardrails)
+        validate_read_only(sql, self.allowed_tables, guardrails=self.guardrails,
+                           namespace=(self.database, self.schema))
         explain_query = CompiledQuery(
             sql=f"EXPLAIN USING TEXT {sql}",
             parameters=[],
@@ -72,7 +73,8 @@ class SnowflakeExecutor:
         }
 
     def execute(self, query: CompiledQuery) -> QueryResult:
-        validate_read_only(query.sql, self.allowed_tables, guardrails=self.guardrails)
+        validate_read_only(query.sql, self.allowed_tables, guardrails=self.guardrails,
+                           namespace=(self.database, self.schema))
         if self.settings.active_snowflake_pat:
             return self._execute_sql_api(query)
         return self._execute_connector(query)

@@ -17,6 +17,8 @@ suite, and `datamind demo-mutation` for the live answer-mutation proof.
 
 ## Key Verified Demonstrations
 
+Guardrail/dataset update (2026-10-18): mutation-intent requests are rejected before planning/execution; core SQL protections remain enforced when configurable rules are disabled or absent. Per-request dataset scope verified against live SF1, SF10, and the E-commerce semantic view. E-commerce reuses SF1 data. Query IDs and targeted-test scope are in PLAN.md; broader unseen-input evaluation remains outstanding.
+
 Reliability update (2026-10-18): targeted live checks on Ollama `gemma2:2b` cover case-insensitive Vietnam revenue, explicit year ranges, relative latest-available years with live coverage evidence, ranking follow-ups, and segment counts. Query IDs and limitations are recorded in PLAN.md. This does not certify the full benchmark on the smaller model. Seeded chat proof has been removed; each new answer must produce real Snowflake evidence.
 
 1. **Four-table live join**: Queried LINEITEM, ORDERS, CUSTOMER, and NATION; query ID `01c7ce8d-000e-16a4-0000-0002b856b259`.

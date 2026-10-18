@@ -1462,6 +1462,9 @@ metrics:
       })
       if (res.ok) {
         setActiveDatasetId(datasetId)
+        setAnswer(null)
+        setChatMessages([])
+        setExecutionStatus('idle')
         const [hRes, dRes, mRes] = await Promise.all([
           fetch('/api/health').then((r) => r.json()),
           fetch('/api/datasets').then((r) => r.json()),
@@ -1560,7 +1563,7 @@ metrics:
       const response = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: query,
+        body: JSON.stringify({ question: query, dataset: activeDatasetId,
           context: chatMessages.filter(m => m.role === 'user').slice(-3).map(m => m.content),
           previous_plan: answer?.plan.dataset === activeDatasetId ? answer.plan : null }),
       })
@@ -1620,8 +1623,7 @@ metrics:
                     status: 'blocked',
                     error: detail.message,
                     steps: [
-                      { id: '1', name: 'NL Intent Parsing', detail: 'Parsed user request', status: 'done', elapsed_ms: 40 },
-                      { id: '2', name: 'Safety Guardrail Gate', detail: 'REJECTED: AST Policy Violation', status: 'done', elapsed_ms: 15 },
+                      { id: '1', name: 'Read-only Guardrail', detail: detail.message, status: 'done' },
                     ],
                   }
                 : m
@@ -2242,7 +2244,7 @@ metrics:
                               <>
                                 <ShieldAlert size={12} color="#f87171" />
                                 <span style={{ color: '#f87171', fontWeight: 600 }}>
-                                  Blocked by Safety Guardrail (AST Policy)
+                                  Blocked by Read-only Guardrail
                                 </span>
                               </>
                             ) : msg.status === 'error' ? (
@@ -3044,6 +3046,7 @@ metrics:
                               <select
                                 className={`guardrail-severity-select ${rule.severity}`}
                                 value={rule.severity}
+                                disabled={['rule-single-select', 'rule-no-mutation', 'rule-table-allowlist'].includes(rule.id)}
                                 onChange={(e) => updateGuardrailSeverity(rule.id, e.target.value as 'block' | 'warn')}
                                 title="Change action when rule triggers"
                               >
@@ -3061,6 +3064,8 @@ metrics:
                           <div className="guardrail-card-actions">
                             <button
                               className={`guardrail-toggle-btn ${rule.enabled ? 'active' : ''}`}
+                              disabled={['rule-single-select', 'rule-no-mutation', 'rule-table-allowlist'].includes(rule.id)}
+                              title={['rule-single-select', 'rule-no-mutation', 'rule-table-allowlist'].includes(rule.id) ? 'Required protection — always enabled' : undefined}
                               onClick={() => toggleGuardrailRule(rule.id, !rule.enabled)}
                             >
                               <span className={`status-dot ${rule.enabled ? 'ready' : ''}`} />

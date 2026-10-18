@@ -1,9 +1,22 @@
 from datetime import UTC, datetime
 from unittest.mock import Mock
 
+import pytest
+
 from datamind.core.agent import DataMindAgent
 from datamind.core.catalog import SemanticCatalog
 from datamind.core.models import Filter, QueryPlan, QueryResult, Sort
+from datamind.core.safety import UnsafeQuery
+
+
+@pytest.mark.parametrize('dataset', ['tpch', 'tpch_sf10', 'ecommerce'])
+def test_blocked_request_never_calls_model_or_snowflake(dataset):
+    planner, executor = Mock(), Mock()
+    agent = DataMindAgent(SemanticCatalog.load(f'config/{dataset}.yml'), planner, executor)
+    with pytest.raises(UnsafeQuery):
+        agent.ask('DROP TABLE CUSTOMER; -- Test last two years')
+    planner.plan.assert_not_called()
+    executor.execute.assert_not_called()
 
 
 def test_relative_period_uses_live_coverage_and_retains_proof():

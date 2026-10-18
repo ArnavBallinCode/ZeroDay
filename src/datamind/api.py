@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -25,6 +26,7 @@ from datamind.core.safety import (
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=500)
+    dataset: str | None = Field(default=None, pattern=r'^[A-Za-z0-9_-]+$')
     context: list[str] = Field(default_factory=list, max_length=10)
     previous_plan: QueryPlan | None = None
 
@@ -101,8 +103,9 @@ executor = SnowflakeExecutor(
 agent = DataMindAgent(catalog, planner, executor)
 
 
-def switch_dataset(name: str) -> None:
-    global active_dataset_id, catalog, executor, agent
+def build_dataset_agent(name: str) -> DataMindAgent:
+    if not re.fullmatch(r'[A-Za-z0-9_-]+', name):
+        raise HTTPException(400, 'Invalid dataset identifier')
     path = Path("config") / f"{name}.yml"
     if not path.exists():
         raise HTTPException(404, f"Dataset configuration {name}.yml not found")
@@ -119,10 +122,15 @@ def switch_dataset(name: str) -> None:
     new_executor.statement_timeout = executor.statement_timeout
     new_executor.max_rows = executor.max_rows
     new_executor.query_tag = executor.query_tag
-    new_agent = DataMindAgent(new_catalog, planner, new_executor)
+    return DataMindAgent(new_catalog, planner, new_executor)
+
+
+def switch_dataset(name: str) -> None:
+    global active_dataset_id, catalog, executor, agent
+    new_agent = build_dataset_agent(name)
     active_dataset_id = name
-    catalog = new_catalog
-    executor = new_executor
+    catalog = new_agent.catalog
+    executor = new_agent.executor
     agent = new_agent
 
 
@@ -268,6 +276,10 @@ def add_guardrail_rule(payload: AddRuleRequest) -> dict[str, Any]:
 @app.patch("/api/guardrails/rules/{rule_id}")
 def update_guardrail_rule(rule_id: str, payload: UpdateRuleRequest) -> dict[str, Any]:
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if rule_id in {'rule-single-select', 'rule-no-mutation', 'rule-table-allowlist'} and (
+        updates.get('enabled') is False or updates.get('severity') == 'warn'
+    ):
+        raise HTTPException(400, 'Read-only execution and the table allowlist are required and cannot be weakened.')
     rule = guardrails.update_rule(rule_id, updates)
     if not rule:
         raise HTTPException(404, f"Guardrail rule {rule_id} not found")
@@ -530,7 +542,10 @@ def ask(payload: AskRequest) -> AnswerEnvelope:
     if not planner.health():
         raise HTTPException(503, f"Local Gemma model {settings.gemma_model} is not available.")
     try:
-        return agent.ask(payload.question, payload.context, payload.previous_plan)
+        request_agent = build_dataset_agent(payload.dataset) if payload.dataset else agent
+        return request_agent.ask(payload.question, payload.context, payload.previous_plan)
+    except HTTPException:
+        raise
     except NeedsClarification as exc:
         raise HTTPException(
             422,

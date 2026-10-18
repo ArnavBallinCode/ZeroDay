@@ -50,6 +50,7 @@ class UnsafeQuery(ValueError):
 
 
 FORBIDDEN_NODES = (
+    exp.Into,
     exp.Insert,
     exp.Update,
     exp.Delete,
@@ -60,6 +61,26 @@ FORBIDDEN_NODES = (
     exp.Merge,
     *( [exp.TruncateTable] if hasattr(exp, "TruncateTable") else [] ),
 )
+
+
+def validate_question(question: str) -> None:
+    """Reject mutation commands before model planning or any coverage query."""
+    normalized = re.sub(r'/\*.*?\*/', ' ', question, flags=re.DOTALL)
+    command = re.search(
+        r'\b(?:drop\s+(?:table|database|schema|view|role|user)|'
+        r'truncate\s+(?:table\s+)?\w+|delete\s+from|insert\s+into|'
+        r'update\s+[\w.\"]+\s+set|alter\s+(?:table|database|schema|user|role)|'
+        r'create\s+(?:or\s+replace\s+)?(?:table|database|schema|view|user|role)|'
+        r'merge\s+into|grant\s+\w+|revoke\s+\w+|execute\s+immediate)\b',
+        normalized, re.IGNORECASE,
+    )
+    natural_mutation = re.search(
+        r'^\s*(?:please\s+)?(?:delete|remove|erase|truncate|drop)\s+'
+        r'(?:(?:all|the|every)\s+)*(?:data|rows|records|tables?|customers?|orders?)\b',
+        normalized, re.IGNORECASE,
+    )
+    if command or natural_mutation:
+        raise UnsafeQuery('This app supports read-only analytics. Requests to change or delete data are blocked before planning; no SQL was executed.')
 
 DEFAULT_FORBIDDEN_KEYWORDS = [
     "SYSTEM$WAIT",
@@ -236,13 +257,19 @@ class GuardrailsConfig(BaseModel):
                 message=message,
                 category=rule.category,
             )
-            if rule.severity == "block":
+            if rule.id in {'rule-single-select', 'rule-no-mutation', 'rule-table-allowlist'}:
+                violation.severity = 'block'
+            if violation.severity == "block":
                 violations.append(violation)
             else:
                 warnings.append(violation)
 
-        for rule in self.rules:
-            if not rule.enabled:
+        required_ids = {'rule-single-select', 'rule-no-mutation', 'rule-table-allowlist'}
+        effective_rules = list(self.rules)
+        effective_rules.extend(r for r in get_default_rules()
+                               if r.id in required_ids and not self.get_rule(r.id))
+        for rule in effective_rules:
+            if not rule.enabled and rule.id not in {'rule-single-select', 'rule-no-mutation', 'rule-table-allowlist'}:
                 continue
             rules_checked += 1
 
@@ -349,9 +376,18 @@ def validate_read_only(
     sql: str,
     allowed_tables: set[str],
     guardrails: GuardrailsConfig | None = None,
+    namespace: tuple[str, str] | None = None,
 ) -> None:
     config = guardrails or _DEFAULT_GUARDRAILS
     report = config.evaluate(sql, allowed_tables)
     if not report.passed:
         first_violation = report.violations[0]
         raise UnsafeQuery(first_violation.message, violations=report.violations)
+    if namespace:
+        database, schema = (part.upper() for part in namespace)
+        statement = sqlglot.parse_one(sql.replace('%s', '?'), read='snowflake')
+        for table in statement.find_all(exp.Table):
+            if (table.catalog and table.catalog.upper() != database) or (
+                table.db and table.db.upper() != schema
+            ):
+                raise UnsafeQuery('Query referenced a database or schema outside the active semantic model')

@@ -9,6 +9,7 @@ from datamind.core.answer import deterministic_summary, verify_sentence_groundin
 from datamind.core.catalog import SemanticCatalog
 from datamind.core.compiler import InvalidPlan, QueryCompiler
 from datamind.core.models import AnswerEnvelope, ExecutionStageTrace, Filter, QueryPlan, Sort
+from datamind.core.safety import validate_question
 
 
 class NeedsClarification(ValueError):
@@ -36,6 +37,10 @@ class DataMindAgent:
         context: list[str] | None = None,
         previous_plan: QueryPlan | None = None,
     ) -> AnswerEnvelope:
+        validate_question(question)
+        if previous_plan and previous_plan.dataset != self.catalog.name:
+            previous_plan = None
+            context = []
         stages: list[ExecutionStageTrace] = []
         overall_start = time.perf_counter()
 

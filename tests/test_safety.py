@@ -1,6 +1,46 @@
 import pytest
 
-from datamind.core.safety import UnsafeQuery, validate_read_only
+from datamind.core.safety import (
+    GuardrailsConfig,
+    UnsafeQuery,
+    validate_question,
+    validate_read_only,
+)
+
+
+@pytest.mark.parametrize('question', [
+    'DROP TABLE CUSTOMER; -- Test', 'Please delete all customer records',
+    'DELETE FROM ORDERS', 'drop /* comment */ table CUSTOMER',
+    'revenue last two years; DROP TABLE ORDERS', 'UPDATE CUSTOMER SET C_NAME=1',
+])
+def test_rejects_destructive_question(question):
+    with pytest.raises(UnsafeQuery):
+        validate_question(question)
+
+
+@pytest.mark.parametrize('question', [
+    'How much did revenue drop in 1995?', 'How many orders did each market segment place?',
+    'Show customers with the largest revenue', 'What is the return rate?',
+])
+def test_allows_ordinary_analytics_language(question):
+    validate_question(question)
+
+
+def test_core_protections_cannot_be_disabled_or_removed():
+    for config in [GuardrailsConfig(rules=[]), GuardrailsConfig()]:
+        for rule in config.rules:
+            rule.enabled = False
+            rule.severity = 'warn'
+        for sql in ['DROP TABLE CUSTOMER', 'SELECT * INTO X FROM CUSTOMER',
+                    'SELECT * FROM SECRET', 'SELECT * FROM CUSTOMER; DELETE FROM CUSTOMER']:
+            with pytest.raises(UnsafeQuery):
+                validate_read_only(sql, {'CUSTOMER'}, config)
+
+
+def test_rejects_same_table_name_in_other_dataset():
+    with pytest.raises(UnsafeQuery, match='outside the active'):
+        validate_read_only('SELECT * FROM DB.TPCH_SF10.ORDERS', {'ORDERS'},
+                           namespace=('DB', 'TPCH_SF1'))
 
 
 def test_allows_one_select_from_allowlisted_tables() -> None:

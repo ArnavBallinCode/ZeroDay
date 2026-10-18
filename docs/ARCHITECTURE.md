@@ -6,6 +6,9 @@
 question
    |
    v
+read-only request check -- rejects destructive intent before model/query calls
+   |
+   v
 local Gemma planner -- emits constrained QueryPlan JSON, never SQL
    |
    v
@@ -47,6 +50,8 @@ generates the headline deterministically so its names and numbers cannot exceed 
 
 - A dedicated role has imported read-only access to the sample database.
 - Only one `SELECT` over allowlisted tables can execute.
+- Core single-SELECT, no-mutation, and table allowlist policies are mandatory; optional UI rules cannot disable them. Explicit database/schema references must match the selected catalog.
+- Each chat request carries its selected dataset and uses a separate agent instance; previous-plan context from a different catalog is discarded.
 - Values are bound parameters; model output is never interpolated as a value.
 - Result count and model-selected `LIMIT` are bounded.
 - Statements time out after 30 seconds.

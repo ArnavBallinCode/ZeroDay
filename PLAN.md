@@ -61,6 +61,15 @@ Snowflake performs every calculation. The UI presents the answer and its complet
 
 ## Definition of done
 
+### 2026-10-18 guardrails and dataset isolation
+
+- Reject destructive request text before Gemma planning or Snowflake coverage queries. Regression tests prove neither boundary is called for blocked requests across all three configured catalogs.
+- Required single-SELECT, no-mutation (including SELECT INTO), and table-allowlist checks cannot be disabled or downgraded. Executor also rejects explicit database/schema references outside the active catalog.
+- Chat sends the selected dataset on each request; the API creates a request-scoped agent. Switching catalogs clears chat/answer context, and cross-catalog previous plans are discarded server-side.
+- Live segment-count checks on Ollama `gemma2:2b`: SF1 `01c7cfcf-000e-16d0-0002-b8560001e2e6`, SF10 `01c7cfcf-000e-16df-0002-b856000211ea`, E-commerce `01c7cfcf-000e-1619-0000-0002b8567c6d`. Exact `DROP TABLE CUSTOMER; -- Test` receives structured HTTP 400 on all three; browser chat confirms the blocked state.
+- E-commerce is a semantic view over the same SF1 sample tables, not an independently sourced dataset. New datasets require valid catalog configuration and accessible Snowflake tables.
+- 43 regression tests pass; lint and frontend build pass. These targeted checks do not establish comprehensive adversarial or unseen-question coverage.
+
 ### 2026-10-18 query reliability repair
 
 - Fixed case-insensitive text filters and validated numeric year / ISO-date bindings.
