@@ -44,10 +44,22 @@ def test_text_filter_case(compiler: QueryCompiler) -> None:
     assert query.parameters == ('VIETNAM',)
 
 
-def test_year_rejects_date(compiler: QueryCompiler) -> None:
+def test_year_normalizes_model_date_to_year(compiler: QueryCompiler) -> None:
+    query = compiler.compile(QueryPlan(metrics=['revenue'], filters=[
+        Filter(field='order_year', operator='gte', value='2021-01-01')]))
+    assert query.parameters == (2021,)
+
+
+def test_year_rejects_non_year(compiler: QueryCompiler) -> None:
     with pytest.raises(InvalidPlan, match='numeric years'):
         compiler.compile(QueryPlan(metrics=['revenue'], filters=[
-            Filter(field='order_year', operator='gte', value='2021-01-01')]))
+            Filter(field='order_year', operator='gte', value='recent')]))
+
+
+def test_year_rejects_invalid_model_date(compiler: QueryCompiler) -> None:
+    with pytest.raises(InvalidPlan, match='valid four-digit year'):
+        compiler.compile(QueryPlan(metrics=['revenue'], filters=[
+            Filter(field='order_year', operator='gte', value='2021-99-99')]))
 
 
 def test_year_binding(compiler: QueryCompiler) -> None:

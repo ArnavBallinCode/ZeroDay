@@ -77,7 +77,8 @@ Snowflake performs every calculation. The UI presents the answer and its complet
 - Chat sends previous plan; ordinal first/second follow-ups preserve ranking and dates and rerun Snowflake. Removed indiscriminate backend inheritance for independent questions.
 - Summaries show up to five evidence-linked rows, rather than only the first. Removed seeded chat answers and receipts. Ordinary execution failures are not marked as security blocks in the pipeline.
 - Runtime: Ollama `gemma2:2b`. Live verified Vietnam total 8,770,676,107.5495 (`01c7cf67-000e-16cf-0002-b8560001f06a`), independently matched by query `01c7cf6a-000e-16d0-0002-b8560001e06a`; explicit 1995–1996 revenue (`01c7cf69-000e-16b8-0002-b8560001c10e`); orders by segment (`01c7cf69-000e-1673-0002-b85600019392`).
-- Regression checks: 27 tests, lint, frontend build passed. Desktop chat verified with live relative-year question followed by first/second. Narrow-screen sidebar/chat overflow repaired.
+- Vague `last years` requests now default to the latest two years in the selected dataset, ISO dates emitted for numeric year dimensions are safely normalized, and explicit rank counts override planner defaults. The exact five-nation SF10 question succeeded for 1997–1998 with live query ID `01c7cfd6-000e-16cf-0000-0002b8567c71`.
+- Regression checks: 46 tests, lint, frontend build passed. Desktop chat verified with live relative-year ranking and Snowflake evidence. Narrow-screen sidebar/chat overflow repaired.
 - Limitation: this is targeted regression verification, not a fresh pass of the entire 25-case live benchmark. Broad unseen-query accuracy on the lightweight model still needs evaluation.
 
 The submission is done only when all pass/fail gates are satisfied, mandatory M1-M8 behavior works on

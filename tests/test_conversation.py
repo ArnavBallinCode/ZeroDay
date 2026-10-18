@@ -37,6 +37,26 @@ def test_relative_period_uses_live_coverage_and_retains_proof():
     assert answer.execution_trace[0].output_payload['result']['query_id'] == 'coverage'
 
 
+def test_vague_last_years_defaults_to_latest_two_and_honors_rank_count():
+    catalog = SemanticCatalog.load('config/tpch_sf10.yml')
+    planner = Mock(model='gemma2:2b', temperature=0)
+    planner.plan.return_value = QueryPlan(
+        dataset='tpch', dimensions=['nation_name'], metrics=['revenue'], limit=20)
+    planner.explain.return_value = 'Ranked result.'
+    executor = Mock(guardrails=None, allowed_tables=set(catalog.tables))
+    executor.execute.side_effect = [
+        QueryResult(query_id='coverage', columns=['order_year', 'order_count'], rows=[[1998, 1]],
+                    elapsed_ms=1, warehouse='test', role='test', executed_at=datetime.now(UTC)),
+        QueryResult(query_id='answer', columns=['nation_name', 'revenue'], rows=[['VIETNAM', 10]],
+                    elapsed_ms=1, warehouse='test', role='test', executed_at=datetime.now(UTC)),
+    ]
+    answer = DataMindAgent(catalog, planner, executor).ask(
+        'Which five customer nations generated the max revenue in the last years')
+    assert answer.plan.limit == 5
+    assert answer.plan.sort[0].field == 'revenue'
+    assert answer.query.parameters == (1997, 1998)
+
+
 def test_ordinal_followup_preserves_previous_ranking_and_reruns():
     catalog = SemanticCatalog.load('config/tpch.yml')
     planner = Mock(model='gemma2:2b', temperature=0)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import deque
 from datetime import date
 from typing import Any
@@ -89,9 +90,18 @@ class QueryCompiler:
             raise InvalidPlan('An in filter requires 1-100 values')
         values = item.value if isinstance(item.value, list) else [item.value]
         if item.field.endswith('_year'):
-            if any(isinstance(v, bool) or not str(v).isdigit() or len(str(v)) != 4 for v in values):
-                raise InvalidPlan(f'{item.field} requires four-digit numeric years, not dates')
-            values = [int(v) for v in values]
+            normalized_years = []
+            for value in values:
+                text = str(value)
+                if re.fullmatch(r'\d{4}-\d{2}-\d{2}', text):
+                    try:
+                        text = str(date.fromisoformat(text).year)
+                    except ValueError as exc:
+                        raise InvalidPlan(f'{item.field} requires a valid four-digit year') from exc
+                if isinstance(value, bool) or not re.fullmatch(r'\d{4}', text):
+                    raise InvalidPlan(f'{item.field} requires four-digit numeric years')
+                normalized_years.append(int(text))
+            values = normalized_years
         elif item.field.endswith(('_date', '_month')):
             try:
                 values = [date.fromisoformat(str(v)).isoformat() for v in values]

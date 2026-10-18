@@ -50,13 +50,20 @@ class DataMindAgent:
         t0 = time.perf_counter()
         prompt_schema = self.catalog.prompt_schema()
         # Resolve relative dates against live data, not an invented model cutoff.
-        relative = re.search(r'\b(?:last|past|latest)\s+(\d+|one|two|three|four|five)\s+years?\b', question.lower())
+        relative = re.search(
+            r'\b(?:last|past|latest|recent)\s+'
+            r'(?:(\d+|one|two|three|four|five)\s+)?(year|years)\b',
+            question.lower(),
+        )
         if re.search(r'\b(?:rolling|calendar|today|current|19\d{2}|20\d{2})\b', question.lower()):
             relative = None  # Explicit user dates take precedence over dataset-relative defaults.
         year_range = None
         if relative and 'order_year' in self.catalog.dimensions:
             words = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5}
-            count = words.get(relative[1]) or int(relative[1])
+            count_token = relative[1]
+            count = (words.get(count_token) or int(count_token)) if count_token else (
+                1 if relative[2] == 'year' else 2
+            )
             if not 1 <= count <= 100:
                 raise NeedsClarification('Please choose a year range between 1 and 100 years.')
             coverage_query = self.compiler.compile(QueryPlan(
@@ -81,6 +88,16 @@ class DataMindAgent:
             plan.filters = [f for f in plan.filters if f.field not in ('order_year', 'order_date', 'order_month')]
             plan.filters.append(Filter(field='order_year', operator='between', value=year_range))
             plan.assumptions.append(f"Interpreted '{relative[0]}' as latest available dataset years {year_range[0]}–{year_range[1]}, not today's calendar years; the final year may be partial.")
+        rank_count = re.search(
+            r'\b(?:top|first|which)\s+(\d+|one|two|three|four|five|ten)\b',
+            question.lower(),
+        )
+        if rank_count:
+            rank_words = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'ten': 10}
+            requested_limit = rank_words.get(rank_count[1]) or int(rank_count[1])
+            plan.limit = min(requested_limit, 200)
+            if plan.metrics and not plan.sort and re.search(r'\b(?:max|most|highest|top)\b', question.lower()):
+                plan.sort = [Sort(field=plan.metrics[0], direction='desc')]
         # A bare ordinal follow-up refers to the previous ranking, not a new entity.
         if previous_plan and re.fullmatch(r'[\s?.,]*(?:who (?:is|are|was|were) (?:the )?|show (?:me )?(?:the )?)?(?:first|1st) (?:and|&) (?:second|2nd)[\s?.,]*', question.lower()):
             plan = previous_plan.model_copy(deep=True)
