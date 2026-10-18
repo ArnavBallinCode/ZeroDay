@@ -71,6 +71,7 @@ class DataMindAgent:
                     output_payload={'query': coverage_query.model_dump(), 'result': coverage.model_dump(mode='json')},
                     explanation=f'Resolved latest {count} available years as {year_range[0]}–{year_range[1]}.'))
         plan = self.planner.plan(question, prompt_schema, context, previous_plan)
+        self._scope_plan_to_active_catalog(plan)
         if year_range:
             plan.filters = [f for f in plan.filters if f.field not in ('order_year', 'order_date', 'order_month')]
             plan.filters.append(Filter(field='order_year', operator='between', value=year_range))
@@ -89,6 +90,7 @@ class DataMindAgent:
                 repair_schema = {**prompt_schema, 'validation_error': str(exc),
                                  'rejected_plan': plan.model_dump()}
                 plan = self.planner.plan(question, repair_schema, context, previous_plan)
+                self._scope_plan_to_active_catalog(plan)
         t1 = time.perf_counter()
         stage1_ms = max(1, int((t1 - t0) * 1000))
 
@@ -369,3 +371,18 @@ class DataMindAgent:
             limitations=limitations,
             execution_trace=stages,
         )
+
+    def _scope_plan_to_active_catalog(self, plan: QueryPlan) -> None:
+        """Bind model output to the catalog selected by the application.
+
+        Dataset selection is trusted application state, not a choice delegated to
+        Gemma. This also lets compatible catalogs such as TPC-H SF1/SF10 share the
+        same natural-language behavior without weakening compiler validation.
+        """
+        if plan.dataset != self.catalog.name:
+            emitted_dataset = plan.dataset
+            plan.dataset = self.catalog.name
+            plan.assumptions.append(
+                f"Planner emitted dataset {emitted_dataset!r}; execution was scoped to the "
+                f"active semantic model {self.catalog.name!r}."
+            )

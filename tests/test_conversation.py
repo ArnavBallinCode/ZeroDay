@@ -43,3 +43,25 @@ def test_ordinal_followup_preserves_previous_ranking_and_reruns():
     assert answer.claims[1].row_indexes == [1]
     assert previous.limit == 5
     executor.execute.assert_called_once()
+
+
+def test_plan_is_scoped_to_active_compatible_catalog():
+    catalog = SemanticCatalog.load('config/tpch_sf10.yml')
+    planner = Mock(model='gemma2:2b', temperature=0)
+    # Small models commonly emit the base TPC-H name even when SF10 is active.
+    planner.plan.return_value = QueryPlan(
+        dataset='tpch', dimensions=['customer_segment'], metrics=['order_count'])
+    planner.explain.return_value = 'Five market segments were returned.'
+    executor = Mock(guardrails=None, allowed_tables=set(catalog.tables))
+    executor.execute.return_value = QueryResult(
+        query_id='sf10-live', columns=['customer_segment', 'order_count'],
+        rows=[['BUILDING', 3000000]], elapsed_ms=1, warehouse='test', role='test',
+        executed_at=datetime.now(UTC))
+
+    answer = DataMindAgent(catalog, planner, executor).ask(
+        'How many orders did each market segment place?')
+
+    assert answer.plan.dataset == 'tpch_sf10'
+    assert 'SNOWFLAKE_SAMPLE_DATA.TPCH_SF10.ORDERS' in answer.query.sql
+    assert answer.result.query_id == 'sf10-live'
+    assert any('active semantic model' in item for item in answer.plan.assumptions)
