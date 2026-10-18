@@ -81,15 +81,6 @@ button, input, select, textarea {
   background: var(--bg-primary);
 }
 
-.sidebar {
-  width: var(--sidebar-width);
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  z-index: 20;
-}
 
 .sidebar-header {
   padding: 16px 18px;
@@ -2570,8 +2561,8 @@ button, input, select, textarea {
    ============================================================================ */
 
 :root {
-  --sidebar-width: 250px;
-  --sidebar-rail-width: 62px;
+  --sidebar-width: 245px;
+  --sidebar-rail-width: 58px;
 }
 
 .app-layout {
@@ -2583,56 +2574,45 @@ button, input, select, textarea {
   background: var(--bg-primary);
 }
 
-/* Sidebar base */
+/* Sidebar base (always in flow, zero layout jump, zero duplicate column) */
 .sidebar {
-  width: var(--sidebar-width);
+  width: var(--sidebar-rail-width);
   height: 100vh;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  z-index: 40;
-  transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, transform 0.22s ease;
+  z-index: 30;
+  transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow-x: hidden;
+  overflow-y: hidden;
 }
 
-/* Collapsed rail placeholder to keep layout rock-solid */
-.sidebar-rail-placeholder {
-  width: var(--sidebar-rail-width);
-  height: 100vh;
-  flex-shrink: 0;
-}
-
-/* Collapsed state (rail mode) */
-.sidebar.collapsed {
-  width: var(--sidebar-rail-width);
-  overflow: hidden;
-}
-
-/* Collapsed AND hovered: smooth hover-expansion over main content */
-.sidebar.collapsed.hover-expanded {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
+/* When pinned: locked open at 245px */
+.sidebar.pinned {
   width: var(--sidebar-width);
-  box-shadow: 8px 0 32px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(16px);
-  z-index: 100;
 }
 
-/* Sidebar header & toggles */
+/* When in hover mode: expands smoothly in layout flow */
+.sidebar.collapsed.hover-expanded,
+.sidebar.collapsed:hover {
+  width: var(--sidebar-width);
+}
+
+/* Sidebar header */
 .sidebar-header {
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 54px;
+  min-height: 52px;
+  box-sizing: border-box;
 }
 
-.sidebar.collapsed:not(.hover-expanded) .sidebar-header {
-  padding: 14px 0;
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .sidebar-header {
+  padding: 12px 0;
   justify-content: center;
 }
 
@@ -2640,14 +2620,19 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
-.sidebar.collapsed:not(.hover-expanded) .sidebar-logo-text,
-.sidebar.collapsed:not(.hover-expanded) .logo-badge {
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .sidebar-logo {
+  justify-content: center;
+}
+
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .sidebar-logo-text,
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .logo-badge {
   display: none;
 }
 
@@ -2655,14 +2640,15 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .sidebar-pin-btn:hover {
@@ -2671,37 +2657,60 @@ button, input, select, textarea {
   border-color: var(--border-color);
 }
 
-.sidebar.collapsed:not(.hover-expanded) .sidebar-pin-btn {
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .sidebar-pin-btn {
   display: none;
 }
 
-/* Navigation items in rail vs expanded */
-.sidebar.collapsed:not(.hover-expanded) .nav-section-title {
+/* Navigation items */
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .nav-section {
+  padding: 0 6px;
+}
+
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .nav-section-title {
   display: none;
 }
 
-.sidebar.collapsed:not(.hover-expanded) .nav-item {
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .nav-item {
   justify-content: center;
-  padding: 10px 0;
+  padding: 9px 0;
+  border-radius: var(--radius-sm);
 }
 
-.sidebar.collapsed:not(.hover-expanded) .nav-item span,
-.sidebar.collapsed:not(.hover-expanded) .nav-chevron,
-.sidebar.collapsed:not(.hover-expanded) .nav-count {
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .nav-item span,
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .nav-chevron,
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .nav-count {
   display: none;
 }
 
-.sidebar.collapsed:not(.hover-expanded) .sidebar-footer .system-telemetry-box {
+/* Sidebar footer */
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .sidebar-footer {
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .sidebar-footer .system-telemetry-box {
   display: none;
 }
 
-.sidebar.collapsed:not(.hover-expanded) .sidebar-footer .node-action-btn span {
-  display: none;
-}
-
-.sidebar.collapsed:not(.hover-expanded) .sidebar-footer .node-action-btn {
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .sidebar-footer .node-action-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
   justify-content: center;
-  padding: 8px 0;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar.collapsed:not(:hover):not(.hover-expanded) .sidebar-footer .node-action-btn span {
+  display: none;
 }
 
 /* Hamburger button in top app header */
@@ -2709,8 +2718,8 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
@@ -2718,6 +2727,7 @@ button, input, select, textarea {
   cursor: pointer;
   transition: all 0.15s ease;
   margin-right: 10px;
+  flex-shrink: 0;
 }
 
 .hamburger-toggle-btn:hover {
@@ -2741,15 +2751,17 @@ button, input, select, textarea {
 
 .shadcn-dataset-container.header {
   width: auto;
-  min-width: 220px;
+  min-width: 190px;
+  max-width: 250px;
 }
 
 .shadcn-dataset-trigger {
   width: 100%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 7px 9px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -2759,8 +2771,8 @@ button, input, select, textarea {
 }
 
 .shadcn-dataset-trigger.header {
-  padding: 5px 10px;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .shadcn-dataset-trigger:hover {
@@ -2776,15 +2788,16 @@ button, input, select, textarea {
 .trigger-left {
   display: flex;
   align-items: center;
-  gap: 10px;
-  overflow: hidden;
+  gap: 8px;
+  flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .dataset-badge-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
   background: rgba(59, 130, 246, 0.1);
   border: 1px solid rgba(59, 130, 246, 0.25);
   display: flex;
@@ -2796,18 +2809,21 @@ button, input, select, textarea {
 .trigger-text-col {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  flex: 1;
   min-width: 0;
+  gap: 1px;
+  overflow: hidden;
 }
 
 .trigger-title-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  overflow: hidden;
 }
 
 .trigger-dataset-name {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -2816,17 +2832,17 @@ button, input, select, textarea {
 }
 
 .trigger-count-badge {
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
   flex-shrink: 0;
 }
 
 .trigger-subtext {
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-family: 'DM Mono', monospace;
   color: var(--text-muted);
   white-space: nowrap;
@@ -2837,12 +2853,14 @@ button, input, select, textarea {
 .trigger-chevron {
   color: var(--text-muted);
   flex-shrink: 0;
+  opacity: 0.6;
   transition: transform 0.15s ease;
 }
 
 .shadcn-dataset-trigger.active-open .trigger-chevron {
   transform: rotate(180deg);
   color: var(--text-primary);
+  opacity: 1;
 }
 
 /* Dropdown popover */
@@ -2851,20 +2869,22 @@ button, input, select, textarea {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  min-width: 290px;
+  min-width: 260px;
   background: #090a0d;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-md);
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  z-index: 250;
+  z-index: 500;
   overflow: hidden;
   animation: popoverFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .shadcn-dropdown-popover.floating-rail-popover {
-  left: calc(100% + 8px);
-  top: 0;
-  width: 300px;
+  position: fixed;
+  left: 64px;
+  top: 130px;
+  width: 290px;
+  z-index: 1000;
 }
 
 @keyframes popoverFadeIn {

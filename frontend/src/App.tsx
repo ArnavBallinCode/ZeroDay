@@ -1450,12 +1450,9 @@ metrics:
 
   return (
     <div className="app-layout">
-      {/* SIDEBAR RAIL PLACEHOLDER (when unpinned, holds the slim 62px column) */}
-      {!sidebarPinned && <div className="sidebar-rail-placeholder" />}
-
-      {/* SIDEBAR (Collapsible, Hover-Expandable, with Pin Toggle) */}
+      {/* SIDEBAR (Collapsible, Smooth In-Flow Hover Expansion, Pin Toggle) */}
       <aside
-        className={`sidebar ${!sidebarPinned ? 'collapsed' : ''} ${!sidebarPinned && sidebarHovered ? 'hover-expanded' : ''}`}
+        className={`sidebar ${sidebarPinned ? 'pinned' : 'collapsed'} ${!sidebarPinned && sidebarHovered ? 'hover-expanded' : ''}`}
         onMouseEnter={() => {
           if (!sidebarPinned) setSidebarHovered(true)
         }}
@@ -1473,8 +1470,7 @@ metrics:
             type="button"
             className="sidebar-pin-btn"
             onClick={toggleSidebarPin}
-            title={sidebarPinned ? "Switch to hover-expand rail mode" : "Pin sidebar open"}
-            aria-label="Toggle pin sidebar"
+            aria-label={sidebarPinned ? "Switch to hover-expand rail mode" : "Pin sidebar open"}
           >
             {sidebarPinned ? <PanelLeftClose size={15} /> : <PanelLeft size={15} />}
           </button>
@@ -1486,7 +1482,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'pipeline' ? 'active' : ''}`}
               onClick={() => setActiveTab('pipeline')}
-              title="Pipeline Workbench"
+              aria-label="Pipeline Workbench"
             >
               <LayoutDashboard size={16} />
               <span>Pipeline</span>
@@ -1495,7 +1491,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
               onClick={() => setActiveTab('chat')}
-              title="Conversational Analytics"
+              aria-label="Conversational Analytics"
             >
               <MessageCircle size={16} />
               <span>Chat</span>
@@ -1504,7 +1500,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'studio' ? 'active' : ''}`}
               onClick={() => setActiveTab('studio')}
-              title="Snowflake SQL Studio & EXPLAIN"
+              aria-label="Snowflake SQL Studio & EXPLAIN"
             >
               <Terminal size={16} />
               <span>Snowflake Studio</span>
@@ -1513,7 +1509,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'receipts' ? 'active' : ''}`}
               onClick={() => setActiveTab('receipts')}
-              title="Decision Receipts"
+              aria-label="Decision Receipts"
             >
               <Clock size={16} />
               <span>Decision Receipts</span>
@@ -1522,7 +1518,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'models' ? 'active' : ''}`}
               onClick={() => setActiveTab('models')}
-              title="Semantic Catalog"
+              aria-label="Semantic Catalog"
             >
               <Layers3 size={16} />
               <span>Semantic Model</span>
@@ -1531,7 +1527,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'evals' ? 'active' : ''}`}
               onClick={() => setActiveTab('evals')}
-              title="Rubric Benchmarks"
+              aria-label="Rubric Benchmarks"
             >
               <ShieldCheck size={16} />
               <span>Rubric Evals</span>
