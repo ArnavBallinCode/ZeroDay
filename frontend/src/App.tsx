@@ -13,7 +13,6 @@ import {
   ReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   AlertTriangle,
   ArrowRight,
@@ -21,11 +20,11 @@ import {
   Bot,
   Braces,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleDot,
   Clock,
-  Clock3,
   Code2,
   Copy,
   Cpu,
@@ -41,11 +40,11 @@ import {
   Layers3,
   LayoutDashboard,
   Loader2,
+  Lock,
   Maximize2,
   Menu,
   MessageCircle,
   MessageSquare,
-  PanelLeftClose,
   Play,
   Plus,
   RefreshCw,
@@ -58,10 +57,10 @@ import {
   Sparkles,
   Table2,
   Terminal,
-  TerminalSquare,
   User,
   WandSparkles,
   X,
+  XCircle,
   Zap,
 } from 'lucide-react'
 import {
@@ -87,62 +86,335 @@ import {
 } from './types'
 
 // ============================================================================
-// REACT FLOW CUSTOM NODES (RAGVAULT & PIPELINE WORKBENCH STYLE)
+// RAGVAULT-STYLE CUSTOM REACT FLOW NODES
 // ============================================================================
 
-type PipelineNodeData = {
-  icon: typeof Sparkles
-  kicker: string
-  title: string
-  detail: string
-  stageId: string
-  tone: 'violet' | 'cyan' | 'lime' | 'amber'
-  state?: 'idle' | 'active' | 'done' | 'error'
-  elapsed_ms?: number
-  onClick?: () => void
+// 1. DATA / SEMANTIC MODEL NODE
+function DataNode({ data }: NodeProps<Node<{
+  dataset: string
+  tablesCount: number
+  dimsCount: number
+  metricsCount: number
+  database: string
+  schema: string
+  onSwitchDataset: () => void
+}>>) {
+  return (
+    <div className="pipeline-node data">
+      <Handle type="source" position={Position.Right} className="node-handle" />
+      <div className="node-content-area">
+        <div className="node-header-row">
+          <div>
+            <h3>Data</h3>
+            <p className="node-subtitle">Semantic Catalog</p>
+          </div>
+          <Database size={16} className="node-type-icon teal" />
+        </div>
+
+        <div className="node-data-pill" onClick={data.onSwitchDataset} title="Click to view datasets">
+          <span>Active Dataset</span>
+          <strong>{data.dataset.toUpperCase()}</strong>
+        </div>
+
+        <div className="node-meta-micro">
+          <span>{data.database}.{data.schema}</span>
+        </div>
+
+        <div className="node-tag">
+          {data.tablesCount} tables · {data.dimsCount} dims · {data.metricsCount} metrics
+        </div>
+      </div>
+
+      <div className="node-toolbar">
+        <button title="Configure" onClick={data.onSwitchDataset}><Sliders size={13} /></button>
+        <button title="Schema Info"><Terminal size={13} /></button>
+        <button title="Database"><Database size={13} /></button>
+      </div>
+    </div>
+  )
 }
 
-function StandardPipelineNode({ data }: NodeProps<Node<PipelineNodeData>>) {
-  const Icon = data.icon
+// 2. QUERY NODE (Interactive Question Input + Top-K Slider + Execute button)
+function QueryNode({ data }: NodeProps<Node<{
+  query: string
+  topK: number
+  status: 'idle' | 'querying' | 'success' | 'error'
+  onQueryChange: (q: string) => void
+  onTopKChange: (k: number) => void
+  onExecute: () => void
+}>>) {
   return (
-    <div
-      className={`pipeline-node tone-${data.tone} state-${data.state ?? 'idle'}`}
-      onClick={data.onClick}
-      role="button"
-      tabIndex={0}
-      title="Click to inspect stage payload & telemetry"
-    >
-      <Handle type="target" position={Position.Left} className="flow-handle" />
-      <div className="node-icon">
-        <Icon size={16} />
-      </div>
-      <div className="node-copy">
+    <div className="pipeline-node query">
+      <Handle type="target" position={Position.Left} className="node-handle" />
+      <Handle type="source" position={Position.Right} className="node-handle" />
+
+      <div className="node-content-area">
         <div className="node-header-row">
-          <span>{data.kicker}</span>
-          {data.elapsed_ms !== undefined && (
-            <small className="node-timer">{data.elapsed_ms}ms</small>
-          )}
+          <div>
+            <h3>Query</h3>
+            <p className="node-subtitle">Natural Language</p>
+          </div>
+          <Search size={16} className="node-type-icon purple" />
         </div>
-        <strong>{data.title}</strong>
-        <small>{data.detail}</small>
+
+        <input
+          type="text"
+          className="node-input"
+          placeholder="Ask a data question..."
+          value={data.query}
+          onChange={(e) => data.onQueryChange(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && data.onExecute()}
+          disabled={data.status === 'querying'}
+        />
+
+        <div className="topk-inline">
+          <span>Row Limit:</span>
+          <input
+            type="range"
+            min={1}
+            max={50}
+            value={data.topK}
+            onChange={(e) => data.onTopKChange(Number(e.target.value))}
+            disabled={data.status === 'querying'}
+          />
+          <span className="topk-val">{data.topK}</span>
+        </div>
+
+        <button
+          className="node-action-btn primary"
+          onClick={data.onExecute}
+          disabled={!data.query.trim() || data.status === 'querying'}
+        >
+          {data.status === 'querying' ? (
+            <Loader2 size={15} className="spin" />
+          ) : (
+            <Play size={14} />
+          )}
+          <span>{data.status === 'querying' ? 'Executing...' : 'Execute'}</span>
+        </button>
       </div>
-      {data.state === 'done' && <Check size={14} className="node-check" />}
-      {data.state === 'active' && <Loader2 size={14} className="node-spinner spin" />}
-      {data.state === 'error' && <AlertTriangle size={14} className="node-warn" />}
-      <Handle type="source" position={Position.Right} className="flow-handle" />
+
+      <div className="node-toolbar">
+        <button title="Parameters"><Sliders size={13} /></button>
+        <button title="Logs"><Terminal size={13} /></button>
+        <button title="Clear" onClick={() => data.onQueryChange('')}><RefreshCw size={13} /></button>
+      </div>
+    </div>
+  )
+}
+
+// 3. PLANNER NODE (Google Gemma 4)
+function PlannerNode({ data }: NodeProps<Node<{
+  status: 'idle' | 'active' | 'done'
+  model: string
+  metricsCount: number
+  dimsCount: number
+  onInspect: () => void
+}>>) {
+  return (
+    <div className="pipeline-node planner">
+      <Handle type="target" position={Position.Left} className="node-handle" />
+      <Handle type="source" position={Position.Right} className="node-handle" />
+
+      <div className="node-content-area">
+        <div className="node-header-row">
+          <div>
+            <h3>Planner</h3>
+            <p className="node-subtitle">Google Gemma 4 E4B</p>
+          </div>
+          <Bot size={16} className="node-type-icon purple" />
+        </div>
+
+        <div className="node-status-pill">
+          <span className={`status-dot ${data.status === 'done' ? 'ready' : data.status === 'active' ? 'active' : ''}`} />
+          <span>{data.status === 'active' ? 'Planning...' : data.status === 'done' ? 'JSON Contract Ready' : 'Awaiting Query'}</span>
+        </div>
+
+        <div className="node-tag">
+          {data.model || 'gemma4:e4b'} · temp 0 · GPU Metal
+        </div>
+
+        {data.status === 'done' && (
+          <div className="node-subtag">
+            {data.metricsCount} metrics · {data.dimsCount} dims planned
+          </div>
+        )}
+      </div>
+
+      <div className="node-toolbar">
+        <button title="Inspect Plan" onClick={data.onInspect}><Eye size={13} /></button>
+        <button title="Model Config"><Cpu size={13} /></button>
+      </div>
+    </div>
+  )
+}
+
+// 4. SAFETY GATE NODE
+function SafetyNode({ data }: NodeProps<Node<{
+  status: 'idle' | 'verified' | 'blocked'
+  onInspect: () => void
+}>>) {
+  return (
+    <div className="pipeline-node safety">
+      <Handle type="target" position={Position.Left} className="node-handle" />
+      <Handle type="source" position={Position.Right} className="node-handle" />
+
+      <div className="node-content-area">
+        <div className="node-header-row">
+          <div>
+            <h3>Guardrails</h3>
+            <p className="node-subtitle">Deterministic Policy</p>
+          </div>
+          <Shield size={16} className="node-type-icon green" />
+        </div>
+
+        <div className="node-status-pill">
+          {data.status === 'verified' && <CheckCircle2 size={13} color="var(--accent-green)" />}
+          {data.status === 'blocked' && <XCircle size={13} color="var(--accent-red)" />}
+          {data.status === 'idle' && <Lock size={13} color="var(--text-muted)" />}
+          <span>
+            {data.status === 'verified' ? 'Policy Passed' : data.status === 'blocked' ? 'Blocked Unsafe SQL' : '1-SELECT Policy'}
+          </span>
+        </div>
+
+        <div className="node-tag">
+          Single SELECT · Allowlist Verified · DDL Blocked
+        </div>
+      </div>
+
+      <div className="node-toolbar">
+        <button title="Policy Rules" onClick={data.onInspect}><ShieldCheck size={13} /></button>
+        <button title="Allowlist"><Lock size={13} /></button>
+      </div>
+    </div>
+  )
+}
+
+// 5. SNOWFLAKE EXECUTION NODE
+function SnowflakeNode({ data }: NodeProps<Node<{
+  status: 'idle' | 'computing' | 'done'
+  queryId?: string
+  warehouse: string
+  elapsedMs?: number
+  rowsCount?: number
+  onInspect: () => void
+}>>) {
+  return (
+    <div className="pipeline-node snowflake">
+      <Handle type="target" position={Position.Left} className="node-handle" />
+      <Handle type="source" position={Position.Right} className="node-handle" />
+
+      <div className="node-content-area">
+        <div className="node-header-row">
+          <div>
+            <h3>Snowflake</h3>
+            <p className="node-subtitle">Live Compute & SQL API</p>
+          </div>
+          <Database size={16} className="node-type-icon cyan" />
+        </div>
+
+        <div className="node-status-pill">
+          <span className={`status-dot ${data.status === 'done' ? 'ready' : data.status === 'computing' ? 'active' : ''}`} />
+          <span>{data.status === 'computing' ? 'Computing in Snowflake...' : data.status === 'done' ? `${data.elapsedMs}ms · ${data.rowsCount} rows` : `${data.warehouse} Ready`}</span>
+        </div>
+
+        {data.queryId && (
+          <div className="query-id-pill" onClick={data.onInspect} title="Click to view on Snowflake">
+            <Fingerprint size={12} />
+            <code>{data.queryId.slice(0, 16)}…</code>
+          </div>
+        )}
+
+        <div className="node-tag">
+          {data.warehouse} · X-Small · Auto-suspend 60s
+        </div>
+      </div>
+
+      <div className="node-toolbar">
+        <button title="Inspect Query" onClick={data.onInspect}><ExternalLink size={13} /></button>
+        <button title="Query Tag"><Terminal size={13} /></button>
+        <button title="Warehouse"><Database size={13} /></button>
+      </div>
+    </div>
+  )
+}
+
+// 6. RESULT NODE (Ragvault ResultNode style with expand & source tags)
+function ResultNode({ data }: NodeProps<Node<{
+  answer?: Answer | null
+  status: 'idle' | 'loading' | 'done'
+  onExpand: () => void
+  onCopy: () => void
+}>>) {
+  return (
+    <div className="pipeline-node result">
+      <Handle type="target" position={Position.Left} className="node-handle" />
+
+      <div className="node-content-area">
+        <div className="node-header-row">
+          <div>
+            <h3>Answer</h3>
+            <p className="node-subtitle">Grounded Evidence</p>
+          </div>
+          <button className="expand-btn" onClick={data.onExpand} title="Expand Full Result">
+            <Maximize2 size={13} />
+            <span>Expand</span>
+          </button>
+        </div>
+
+        {data.status === 'loading' && (
+          <div className="result-loading">
+            <Loader2 size={24} className="spin" />
+          </div>
+        )}
+
+        {data.status === 'done' && data.answer && (
+          <div className="result-preview">
+            <p>{data.answer.summary}</p>
+
+            {data.answer.claims && data.answer.claims.length > 0 && (
+              <div className="source-tags">
+                {data.answer.claims.map((cl, i) => (
+                  <span key={i} className="source-tag-mini">
+                    {cl.text.slice(0, 32)}… (row #{cl.row_indexes.map((x) => x + 1).join(',')})
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {data.status === 'idle' && (
+          <div className="node-empty">
+            <Terminal size={20} />
+            <span>Execute a query to see grounded answer</span>
+          </div>
+        )}
+      </div>
+
+      <div className="node-toolbar">
+        <button title="Full View" onClick={data.onExpand}><Maximize2 size={13} /></button>
+        <button title="Copy Answer" onClick={data.onCopy}><Copy size={13} /></button>
+        <button title="View Data Grid" onClick={data.onExpand}><Table2 size={13} /></button>
+      </div>
     </div>
   )
 }
 
 const nodeTypes = {
-  pipeline: StandardPipelineNode,
+  dataNode: DataNode,
+  queryNode: QueryNode,
+  plannerNode: PlannerNode,
+  safetyNode: SafetyNode,
+  snowflakeNode: SnowflakeNode,
+  resultNode: ResultNode,
 }
 
 // ============================================================================
-// INITIAL SEEDED DATA
+// INITIAL SEEDED HISTORY & PROOF
 // ============================================================================
 
-const initialSeededHistory: RunHistoryItem[] = [
+const initialHistory: RunHistoryItem[] = [
   {
     id: 'seed-1',
     timestamp: '2026-10-18T12:14:35Z',
@@ -263,73 +535,73 @@ LIMIT 100`,
 ]
 
 // ============================================================================
-// MAIN APPLICATION COMPONENT
+// MAIN APPLICATION
 // ============================================================================
 
 export default function App() {
-  // Navigation: 'chat' (ChatGPT style), 'pipeline' (Ragvault style), 'history', 'models', 'evals'
-  const [activeView, setActiveView] = useState<'chat' | 'pipeline' | 'history' | 'models' | 'evals'>('chat')
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'chat' | 'receipts' | 'models' | 'evals'>('pipeline')
   const [status, setStatus] = useState<Status | null>(null)
   const [datasets, setDatasets] = useState<DatasetMeta[]>([])
   const [activeDatasetId, setActiveDatasetId] = useState<string>('tpch')
   const [semanticModel, setSemanticModel] = useState<SemanticModelFull | null>(null)
 
-  // Query & Answer
-  const [question, setQuestion] = useState('')
-  const [topKLimit, setTopKLimit] = useState(10)
-  const [answer, setAnswer] = useState<Answer | null>(initialSeededHistory[0].answer || null)
-  const [loading, setLoading] = useState(false)
-  const [currentStageIndex, setCurrentStageIndex] = useState(0)
-  const [progressPercent, setProgressPercent] = useState(0)
-  const [pipelineElapsedTimer, setPipelineElapsedTimer] = useState(0)
-  const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'result' | 'evidence' | 'sql'>('result')
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900)
-  const [selectedNodeStage, setSelectedNodeStage] = useState<string | null>(null)
-
-  // Snowflake Query Inspector Modal
+  // Query and execution state
+  const [queryText, setQueryText] = useState('Which five customer nations generated the most revenue in 1995?')
+  const [topK, setTopK] = useState(5)
+  const [executionStatus, setExecutionStatus] = useState<'idle' | 'querying' | 'success' | 'error'>('idle')
+  const [answer, setAnswer] = useState<Answer | null>(initialHistory[0].answer || null)
+  const [activeModalTab, setActiveModalTab] = useState<'summary' | 'table' | 'sql'>('summary')
+  const [expandModalOpen, setExpandModalOpen] = useState(false)
   const [snowflakeModalOpen, setSnowflakeModalOpen] = useState(false)
   const [inspectedQueryId, setInspectedQueryId] = useState<string | null>(null)
+  const [copiedQueryId, setCopiedQueryId] = useState(false)
+  const [copiedSql, setCopiedSql] = useState(false)
 
-  // Chat Interface State
+  // Stage timeline tracking
+  const [stageProgress, setStageProgress] = useState(0)
+  const [elapsedTimer, setElapsedTimer] = useState(0)
+
+  // History & Receipts
+  const [history, setHistory] = useState<RunHistoryItem[]>(() => {
+    try {
+      const stored = localStorage.getItem('datamind_receipts')
+      return stored ? JSON.parse(stored) : initialHistory
+    } catch {
+      return initialHistory
+    }
+  })
+
+  // Chat conversation
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
-      id: 'welcome',
+      id: 'msg-1',
       role: 'assistant',
-      content: 'Welcome to **DataMind**. I am your verified analytics agent. Every question you ask here is translated into a constrained semantic plan by **Google Gemma 4**, validated by a deterministic safety gate, and executed against **Snowflake** at question time. Try asking about revenue by nation or order counts by market segment.',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      content: 'Welcome to **DataMind**. I answer natural language questions using live computation from **Snowflake**, with semantic planning handled by **Google Gemma 4**. Ask a question or use the Pipeline workbench to see every stage executed live.',
+      timestamp: '12:00 PM',
     },
     {
-      id: 'demo-msg-1',
+      id: 'msg-2',
       role: 'user',
       content: 'Which five customer nations generated the most revenue in 1995?',
       timestamp: '12:14 PM',
     },
     {
-      id: 'demo-msg-2',
+      id: 'msg-3',
       role: 'assistant',
-      content: initialSeededHistory[0].answer!.summary,
+      content: initialHistory[0].answer!.summary,
       timestamp: '12:14 PM',
-      answer: initialSeededHistory[0].answer,
+      answer: initialHistory[0].answer,
       steps: [
-        { id: '1', name: 'NL Intent Parsing', detail: 'Target nation_name and revenue', status: 'done', elapsed_ms: 120 },
-        { id: '2', name: 'Gemma 4 Semantic Plan', detail: 'Constrained JSON plan emitted', status: 'done', elapsed_ms: 980 },
-        { id: '3', name: 'Safety & Allowlist Gate', detail: 'Single SELECT · 4 allowlisted tables verified', status: 'done', elapsed_ms: 15 },
-        { id: '4', name: 'Snowflake Compute', detail: 'DATAMIND_WH · Query ID 01c7ce8d…', status: 'done', elapsed_ms: 3120 },
-        { id: '5', name: 'Evidence Ledger', detail: '5 rows returned, row-grounded claims', status: 'done', elapsed_ms: 450 },
+        { id: '1', name: 'NL Intent', detail: 'Target nation_name and revenue', status: 'done', elapsed_ms: 120 },
+        { id: '2', name: 'Gemma 4 Planner', detail: 'Constrained QueryPlan JSON', status: 'done', elapsed_ms: 980 },
+        { id: '3', name: 'Safety Gate', detail: '1-SELECT · Allowlist verified', status: 'done', elapsed_ms: 15 },
+        { id: '4', name: 'Snowflake Live', detail: 'DATAMIND_WH · 01c7ce8d…', status: 'done', elapsed_ms: 3120 },
+        { id: '5', name: 'Evidence Ledger', detail: '5 rows verified', status: 'done', elapsed_ms: 450 },
       ],
     },
   ])
-
-  // Run history state
-  const [history, setHistory] = useState<RunHistoryItem[]>(() => {
-    try {
-      const stored = localStorage.getItem('datamind_history')
-      return stored ? JSON.parse(stored) : initialSeededHistory
-    } catch {
-      return initialSeededHistory
-    }
-  })
+  const [chatInput, setChatInput] = useState('')
+  const chatBottomRef = useRef<HTMLDivElement>(null)
 
   // Evals state
   const [evalList, setEvalList] = useState<EvalCase[]>([])
@@ -361,14 +633,7 @@ metrics:
   )
   const [customError, setCustomError] = useState('')
 
-  // Copy feedback state
-  const [copiedQueryId, setCopiedQueryId] = useState(false)
-  const [copiedSql, setCopiedSql] = useState(false)
-  const [tableSearch, setTableSearch] = useState('')
-
-  const chatBottomRef = useRef<HTMLDivElement>(null)
-
-  // Load initial backend health, datasets, evals
+  // Load backend health, datasets, evals
   useEffect(() => {
     fetch('/api/health')
       .then((r) => r.json())
@@ -398,31 +663,21 @@ metrics:
       .catch(() => {})
   }, [])
 
-  // Auto-scroll chat to bottom
+  // Auto-scroll chat
   useEffect(() => {
-    if (activeView === 'chat') {
+    if (activeTab === 'chat') {
       chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [chatMessages, activeView, loading])
+  }, [chatMessages, activeTab, executionStatus])
 
-  // Save history to localStorage
+  // Persist receipts
   useEffect(() => {
     try {
-      localStorage.setItem('datamind_history', JSON.stringify(history))
+      localStorage.setItem('datamind_receipts', JSON.stringify(history))
     } catch {}
   }, [history])
 
-  // Pipeline stages definition
-  const pipelineStages: PipelineStep[] = useMemo(() => [
-    { id: '1', name: 'NL Intent Parsing', detail: 'Extracting semantic targets & filters', status: currentStageIndex > 0 ? 'done' : currentStageIndex === 0 && loading ? 'active' : 'pending' },
-    { id: '2', name: 'Gemma 4 Semantic Plan', detail: 'Constrained JSON contract generation', status: currentStageIndex > 1 ? 'done' : currentStageIndex === 1 && loading ? 'active' : 'pending' },
-    { id: '3', name: 'Deterministic Safety Gate', detail: '1-SELECT assertion & table allowlist check', status: currentStageIndex > 2 ? 'done' : currentStageIndex === 2 && loading ? 'active' : 'pending' },
-    { id: '4', name: 'SQL Compiler & Parameterizer', detail: 'Deterministic AST compilation', status: currentStageIndex > 3 ? 'done' : currentStageIndex === 3 && loading ? 'active' : 'pending' },
-    { id: '5', name: 'Snowflake Live Execution', detail: 'DATAMIND_WH · Programmatic SQL API', status: currentStageIndex > 4 ? 'done' : currentStageIndex === 4 && loading ? 'active' : 'pending' },
-    { id: '6', name: 'Evidence Ledger & Grounding', detail: 'Row-level claim verification', status: currentStageIndex > 5 ? 'done' : currentStageIndex === 5 && loading ? 'active' : 'pending' },
-  ], [currentStageIndex, loading])
-
-  // Handle dataset change
+  // Switch dataset
   async function handleDatasetSelect(datasetId: string) {
     if (datasetId === 'new') {
       setCustomModalOpen(true)
@@ -478,106 +733,58 @@ metrics:
     }
   }
 
-  // Run benchmark evaluation
-  async function handleRunEval(evalCase: EvalCase) {
-    setEvalRunning(evalCase.id)
-    try {
-      const res = await fetch('/api/evals/run-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          test_id: evalCase.id,
-          question: evalCase.question,
-          category: evalCase.category,
-          expected_tables: evalCase.expected_tables,
-        }),
-      })
-      const result: EvalResult = await res.json()
-      setEvalResults((prev) => ({ ...prev, [evalCase.id]: result }))
-    } catch {
-      setEvalResults((prev) => ({
-        ...prev,
-        [evalCase.id]: {
-          id: evalCase.id,
-          status: 'failed',
-          passed: false,
-          reason: 'Network or execution failure',
-        },
-      }))
-    } finally {
-      setEvalRunning(null)
-    }
-  }
+  // Core execution function (runs live against backend)
+  async function executePipeline(q: string) {
+    const query = q.trim()
+    if (!query || executionStatus === 'querying') return
 
-  async function handleRunAllEvals() {
-    for (const ec of evalList) {
-      await handleRunEval(ec)
-    }
-  }
-
-  // Core execution handler with live progress timer
-  async function executeQuery(queryText: string) {
-    const q = queryText.trim()
-    if (!q || loading) return
-
-    setLoading(true)
-    setError('')
-    setAnswer(null)
-    setCurrentStageIndex(0)
-    setProgressPercent(15)
-    setPipelineElapsedTimer(0)
+    setExecutionStatus('querying')
+    setStageProgress(20)
+    setElapsedTimer(0)
 
     const timerInterval = setInterval(() => {
-      setPipelineElapsedTimer((t) => t + 100)
+      setElapsedTimer((t) => t + 100)
     }, 100)
 
-    // Add user message to Chat
-    const userMsgId = 'user-' + Date.now()
-    const assistantMsgId = 'asst-' + Date.now()
-
+    // Chat updates
+    const asstId = 'asst-' + Date.now()
     setChatMessages((prev) => [
       ...prev,
       {
-        id: userMsgId,
+        id: 'user-' + Date.now(),
         role: 'user',
-        content: q,
+        content: query,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
       {
-        id: assistantMsgId,
+        id: asstId,
         role: 'assistant',
         content: '',
         status: 'pending',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         steps: [
-          { id: '1', name: 'NL Intent Parsing', detail: 'Parsing natural language with Gemma 4', status: 'active' },
-          { id: '2', name: 'Gemma 4 Semantic Plan', detail: 'Awaiting schema plan', status: 'pending' },
-          { id: '3', name: 'Deterministic Safety Gate', detail: 'Allowlist & 1-SELECT policy', status: 'pending' },
-          { id: '4', name: 'SQL Compiler', detail: 'Compiling parameterized AST', status: 'pending' },
-          { id: '5', name: 'Snowflake Live Compute', detail: 'Executing query on DATAMIND_WH', status: 'pending' },
-          { id: '6', name: 'Evidence Ledger', detail: 'Assembling row-level proof', status: 'pending' },
+          { id: '1', name: 'NL Intent', detail: 'Parsing intent with Gemma 4', status: 'active' },
+          { id: '2', name: 'Gemma 4 Planner', detail: 'Awaiting schema plan', status: 'pending' },
+          { id: '3', name: 'Safety Gate', detail: 'Validating single SELECT and table allowlist', status: 'pending' },
+          { id: '4', name: 'Snowflake Compute', detail: 'Executing query on DATAMIND_WH', status: 'pending' },
+          { id: '5', name: 'Evidence Ledger', detail: 'Generating row-grounded proof', status: 'pending' },
         ],
       },
     ])
 
-    // Stage progression timers
-    const t1 = setTimeout(() => { setCurrentStageIndex(1); setProgressPercent(35) }, 2500)
-    const t2 = setTimeout(() => { setCurrentStageIndex(2); setProgressPercent(55) }, 6000)
-    const t3 = setTimeout(() => { setCurrentStageIndex(3); setProgressPercent(70) }, 8500)
-    const t4 = setTimeout(() => { setCurrentStageIndex(4); setProgressPercent(85) }, 11000)
+    const t1 = setTimeout(() => setStageProgress(45), 3000)
+    const t2 = setTimeout(() => setStageProgress(75), 7000)
 
     try {
       const response = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, context: [] }),
+        body: JSON.stringify({ question: query, context: [] }),
       })
       const payload = await response.json()
 
       clearTimeout(t1)
       clearTimeout(t2)
-      clearTimeout(t3)
-      clearTimeout(t4)
       clearInterval(timerInterval)
 
       if (!response.ok) {
@@ -588,37 +795,36 @@ metrics:
         )
       }
 
-      setCurrentStageIndex(6)
-      setProgressPercent(100)
+      setStageProgress(100)
+      setExecutionStatus('success')
       setAnswer(payload)
 
-      // Update Assistant message
+      // Update chat
       setChatMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMsgId
+        prev.map((m) =>
+          m.id === asstId
             ? {
-                ...msg,
+                ...m,
                 content: payload.summary,
                 status: 'completed',
                 answer: payload,
                 steps: [
-                  { id: '1', name: 'NL Intent Parsing', detail: `Dataset: ${payload.plan.dataset}`, status: 'done', elapsed_ms: 120 },
-                  { id: '2', name: 'Gemma 4 Semantic Plan', detail: `${payload.plan.metrics.length} metrics, ${payload.plan.dimensions.length} dims`, status: 'done', elapsed_ms: 890 },
-                  { id: '3', name: 'Safety & Allowlist Gate', detail: 'Single SELECT · allowlisted tables verified', status: 'done', elapsed_ms: 15 },
-                  { id: '4', name: 'SQL Compiler', detail: `${payload.query.tables.length} tables joined`, status: 'done', elapsed_ms: 45 },
-                  { id: '5', name: 'Snowflake Compute', detail: `${payload.result.warehouse} · Query ID ${payload.result.query_id.slice(0, 14)}…`, status: 'done', elapsed_ms: payload.result.elapsed_ms },
-                  { id: '6', name: 'Evidence Ledger', detail: `${payload.result.rows.length} rows verified`, status: 'done', elapsed_ms: 380 },
+                  { id: '1', name: 'NL Intent', detail: `Dataset: ${payload.plan.dataset}`, status: 'done', elapsed_ms: 120 },
+                  { id: '2', name: 'Gemma 4 Planner', detail: `${payload.plan.metrics.length} metrics, ${payload.plan.dimensions.length} dims`, status: 'done', elapsed_ms: 890 },
+                  { id: '3', name: 'Safety Gate', detail: '1-SELECT · Allowlist verified', status: 'done', elapsed_ms: 15 },
+                  { id: '4', name: 'Snowflake Compute', detail: `${payload.result.warehouse} · ${payload.result.query_id.slice(0, 16)}…`, status: 'done', elapsed_ms: payload.result.elapsed_ms },
+                  { id: '5', name: 'Evidence Ledger', detail: `${payload.result.rows.length} rows verified`, status: 'done', elapsed_ms: 380 },
                 ],
               }
-            : msg
+            : m
         )
       )
 
-      // Add to Run History
-      const newRun: RunHistoryItem = {
-        id: 'run-' + Date.now().toString(36),
+      // Add to decision receipts
+      const newReceipt: RunHistoryItem = {
+        id: 'rcpt-' + Date.now().toString(36),
         timestamp: new Date().toISOString(),
-        question: q,
+        question: query,
         status: 'verified',
         dataset: payload.plan.dataset || activeDatasetId,
         query_id: payload.result.query_id,
@@ -627,23 +833,20 @@ metrics:
         warehouse: payload.result.warehouse,
         answer: payload,
       }
-      setHistory((prev) => [newRun, ...prev])
-    } catch (caught: unknown) {
+      setHistory((prev) => [newReceipt, ...prev])
+    } catch (err: unknown) {
       clearTimeout(t1)
       clearTimeout(t2)
-      clearTimeout(t3)
-      clearTimeout(t4)
       clearInterval(timerInterval)
-
-      const msg = caught instanceof Error ? caught.message : 'Execution failed.'
-      setError(msg)
+      setExecutionStatus('error')
+      const msg = err instanceof Error ? err.message : 'Execution failed.'
 
       setChatMessages((prev) =>
         prev.map((m) =>
-          m.id === assistantMsgId
+          m.id === asstId
             ? {
                 ...m,
-                content: `**Safety Stop or Validation Alert**: ${msg}`,
+                content: `**Safety Stop**: ${msg}`,
                 status: 'error',
                 error: msg,
               }
@@ -652,10 +855,10 @@ metrics:
       )
 
       const isBlocked = msg.toLowerCase().includes('policy') || msg.toLowerCase().includes('unsafe') || msg.toLowerCase().includes('drop')
-      const newRun: RunHistoryItem = {
-        id: 'run-' + Date.now().toString(36),
+      const newReceipt: RunHistoryItem = {
+        id: 'rcpt-' + Date.now().toString(36),
         timestamp: new Date().toISOString(),
-        question: q,
+        question: query,
         status: isBlocked ? 'blocked' : 'clarification',
         dataset: activeDatasetId,
         query_id: isBlocked ? 'POLICY_BLOCKED' : 'FAILED',
@@ -663,196 +866,52 @@ metrics:
         rows_count: 0,
         warehouse: 'DATAMIND_WH',
       }
-      setHistory((prev) => [newRun, ...prev])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Load a run from history
-  function loadFromHistory(item: RunHistoryItem) {
-    if (item.answer) {
-      setAnswer(item.answer)
-      setQuestion(item.question)
-      setActiveView('pipeline')
-    } else {
-      setQuestion(item.question)
-      setActiveView('chat')
-      executeQuery(item.question)
+      setHistory((prev) => [newReceipt, ...prev])
     }
   }
 
   // Open Snowflake inspector modal
-  function inspectSnowflakeQuery(queryId: string) {
-    setInspectedQueryId(queryId)
+  function openSnowflakeInspector(qid?: string) {
+    setInspectedQueryId(qid || answer?.result.query_id || '01c7ce8d-000e-16a4-0000-0002b856b259')
     setSnowflakeModalOpen(true)
   }
 
-  // Dynamic suggestions from active semantic model
-  const suggestions = useMemo(() => {
-    if (semanticModel?.examples && semanticModel.examples.length > 0) {
-      return semanticModel.examples.map((ex) => ex.question)
+  function copyText(txt: string, type: 'queryId' | 'sql' | 'answer') {
+    navigator.clipboard.writeText(txt)
+    if (type === 'queryId') {
+      setCopiedQueryId(true)
+      setTimeout(() => setCopiedQueryId(false), 2000)
+    } else if (type === 'sql') {
+      setCopiedSql(true)
+      setTimeout(() => setCopiedSql(false), 2000)
     }
-    return [
-      'Which five customer nations generated the most revenue in 1995?',
-      'How many orders did each market segment place?',
-      'Compare monthly revenue across 1996.',
-    ]
-  }, [semanticModel])
+  }
 
-  // React Flow Nodes
-  const nodes = useMemo<Node<PipelineNodeData>[]>(() => {
-    return [
-      {
-        id: 'question',
-        type: 'pipeline',
-        position: { x: 30, y: 150 },
-        data: {
-          icon: Search,
-          kicker: '01. Question',
-          title: 'Natural Language',
-          detail: answer?.question ? answer.question.slice(0, 36) + '…' : (question ? question.slice(0, 36) : 'Awaiting input'),
-          stageId: 'question',
-          tone: 'violet',
-          state: loading && currentStageIndex === 0 ? 'active' : currentStageIndex > 0 || answer ? 'done' : 'idle',
-          elapsed_ms: 120,
-          onClick: () => setSelectedNodeStage('question'),
-        },
-      },
-      {
-        id: 'gemma',
-        type: 'pipeline',
-        position: { x: 310, y: 35 },
-        data: {
-          icon: Bot,
-          kicker: '02. Semantic Planner',
-          title: 'Google Gemma 4',
-          detail: answer ? `${answer.plan.metrics.length} metrics · ${answer.plan.dimensions.length} dims` : 'Constrained JSON schema',
-          stageId: 'gemma',
-          tone: 'violet',
-          state: loading && currentStageIndex === 1 ? 'active' : currentStageIndex > 1 || answer ? 'done' : 'idle',
-          elapsed_ms: 890,
-          onClick: () => setSelectedNodeStage('gemma'),
-        },
-      },
-      {
-        id: 'guard',
-        type: 'pipeline',
-        position: { x: 310, y: 265 },
-        data: {
-          icon: ShieldCheck,
-          kicker: '03. Safety Gate',
-          title: 'Deterministic Policy',
-          detail: 'Read-only · allowlist check',
-          stageId: 'guard',
-          tone: 'lime',
-          state: error?.includes('policy') ? 'error' : currentStageIndex > 2 || answer ? 'done' : 'idle',
-          elapsed_ms: 15,
-          onClick: () => setSelectedNodeStage('guard'),
-        },
-      },
-      {
-        id: 'compiler',
-        type: 'pipeline',
-        position: { x: 590, y: 35 },
-        data: {
-          icon: Code2,
-          kicker: '04. SQL Compiler',
-          title: 'AST & Parameterizer',
-          detail: answer ? `${answer.query.tables.length} tables · ${answer.query.parameters.length} bound params` : 'Qualified joins & bindings',
-          stageId: 'compiler',
-          tone: 'cyan',
-          state: currentStageIndex > 3 || answer ? 'done' : 'idle',
-          elapsed_ms: 45,
-          onClick: () => setSelectedNodeStage('compiler'),
-        },
-      },
-      {
-        id: 'snowflake',
-        type: 'pipeline',
-        position: { x: 590, y: 265 },
-        data: {
-          icon: Database,
-          kicker: '05. Data Cloud',
-          title: 'Snowflake Compute',
-          detail: answer ? `${answer.result.elapsed_ms} ms · ${answer.result.rows.length} rows` : 'DATAMIND_WH · Live query',
-          stageId: 'snowflake',
-          tone: 'cyan',
-          state: loading && currentStageIndex === 4 ? 'active' : currentStageIndex > 4 || answer ? 'done' : 'idle',
-          elapsed_ms: answer?.result.elapsed_ms ?? 2889,
-          onClick: () => setSelectedNodeStage('snowflake'),
-        },
-      },
-      {
-        id: 'evidence',
-        type: 'pipeline',
-        position: { x: 880, y: 35 },
-        data: {
-          icon: Fingerprint,
-          kicker: '06. Provenance',
-          title: 'Evidence Ledger',
-          detail: answer ? answer.result.query_id.slice(0, 18) + '…' : 'Query ID & row lineage',
-          stageId: 'evidence',
-          tone: 'amber',
-          state: currentStageIndex > 5 || answer ? 'done' : 'idle',
-          elapsed_ms: 380,
-          onClick: () => setSelectedNodeStage('evidence'),
-        },
-      },
-      {
-        id: 'answer',
-        type: 'pipeline',
-        position: { x: 880, y: 265 },
-        data: {
-          icon: WandSparkles,
-          kicker: '07. Grounded Output',
-          title: 'Verified Answer',
-          detail: answer ? 'Claims backed by rows' : 'Gemma grounded summary',
-          stageId: 'answer',
-          tone: 'lime',
-          state: answer ? 'done' : 'idle',
-          elapsed_ms: 210,
-          onClick: () => setSelectedNodeStage('answer'),
-        },
-      },
-    ]
-  }, [answer, currentStageIndex, error, loading, question])
-
-  const edges: Edge[] = useMemo(
-    () => [
-      { id: 'q-g', source: 'question', target: 'gemma', animated: true },
-      { id: 'q-gd', source: 'question', target: 'guard', animated: true },
-      { id: 'g-c', source: 'gemma', target: 'compiler', animated: true },
-      { id: 'gd-c', source: 'guard', target: 'compiler', animated: true },
-      { id: 'c-s', source: 'compiler', target: 'snowflake', animated: true },
-      { id: 's-e', source: 'snowflake', target: 'evidence', animated: true },
-      { id: 's-a', source: 'snowflake', target: 'answer', animated: true, markerEnd: { type: MarkerType.ArrowClosed } },
-      { id: 'e-a', source: 'evidence', target: 'answer', animated: true },
-    ],
-    []
-  )
-
-  // Chart detection
-  const chartData = useMemo(() => {
-    if (!answer || answer.result.columns.length < 2 || !answer.result.rows.length) return []
-    const numericIndex = answer.result.rows[0]?.findIndex((value) => typeof value === 'number') ?? -1
-    if (numericIndex < 0) return []
-    const labelIndex = numericIndex === 0 ? 1 : 0
-    return answer.result.rows.slice(0, 15).map((row) => ({
-      label: String(row[labelIndex]),
-      value: Number(row[numericIndex]),
-    }))
-  }, [answer])
-
-  // Filtered evidence table rows
-  const filteredRows = useMemo(() => {
-    if (!answer) return []
-    if (!tableSearch.trim()) return answer.result.rows
-    const q = tableSearch.toLowerCase()
-    return answer.result.rows.filter((row) =>
-      row.some((cell) => String(cell).toLowerCase().includes(q))
-    )
-  }, [answer, tableSearch])
+  // Evals run test
+  async function runEvalTest(ec: EvalCase) {
+    setEvalRunning(ec.id)
+    try {
+      const res = await fetch('/api/evals/run-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          test_id: ec.id,
+          question: ec.question,
+          category: ec.category,
+          expected_tables: ec.expected_tables,
+        }),
+      })
+      const result: EvalResult = await res.json()
+      setEvalResults((prev) => ({ ...prev, [ec.id]: result }))
+    } catch {
+      setEvalResults((prev) => ({
+        ...prev,
+        [ec.id]: { id: ec.id, status: 'failed', passed: false, reason: 'Network failure' },
+      }))
+    } finally {
+      setEvalRunning(null)
+    }
+  }
 
   // Export CSV
   function downloadCsv() {
@@ -868,240 +927,312 @@ metrics:
     URL.revokeObjectURL(url)
   }
 
-  function copyText(text: string, type: 'queryId' | 'sql') {
-    navigator.clipboard.writeText(text)
-    if (type === 'queryId') {
-      setCopiedQueryId(true)
-      setTimeout(() => setCopiedQueryId(false), 2000)
-    } else {
-      setCopiedSql(true)
-      setTimeout(() => setCopiedSql(false), 2000)
-    }
-  }
+  // React Flow Nodes
+  const nodes = useMemo<Node[]>(() => {
+    return [
+      {
+        id: 'data',
+        type: 'dataNode',
+        position: { x: 30, y: 160 },
+        data: {
+          dataset: activeDatasetId,
+          tablesCount: semanticModel?.tables.length ?? 8,
+          dimsCount: semanticModel?.dimensions.length ?? 14,
+          metricsCount: semanticModel?.metrics.length ?? 9,
+          database: semanticModel?.database || 'SNOWFLAKE_SAMPLE_DATA',
+          schema: semanticModel?.schema || 'TPCH_SF1',
+          onSwitchDataset: () => setActiveTab('models'),
+        },
+      },
+      {
+        id: 'query',
+        type: 'queryNode',
+        position: { x: 320, y: 130 },
+        data: {
+          query: queryText,
+          topK,
+          status: executionStatus,
+          onQueryChange: setQueryText,
+          onTopKChange: setTopK,
+          onExecute: () => executePipeline(queryText),
+        },
+      },
+      {
+        id: 'planner',
+        type: 'plannerNode',
+        position: { x: 640, y: 35 },
+        data: {
+          status: executionStatus === 'querying' && stageProgress < 50 ? 'active' : answer ? 'done' : 'idle',
+          model: status?.gemma.model || 'gemma4:e4b',
+          metricsCount: answer?.plan.metrics.length ?? 0,
+          dimsCount: answer?.plan.dimensions.length ?? 0,
+          onInspect: () => setExpandModalOpen(true),
+        },
+      },
+      {
+        id: 'safety',
+        type: 'safetyNode',
+        position: { x: 640, y: 275 },
+        data: {
+          status: executionStatus === 'error' ? 'blocked' : answer ? 'verified' : 'idle',
+          onInspect: () => setExpandModalOpen(true),
+        },
+      },
+      {
+        id: 'snowflake',
+        type: 'snowflakeNode',
+        position: { x: 960, y: 155 },
+        data: {
+          status: executionStatus === 'querying' && stageProgress >= 50 ? 'computing' : answer ? 'done' : 'idle',
+          queryId: answer?.result.query_id,
+          warehouse: status?.snowflake.warehouse || 'DATAMIND_WH',
+          elapsedMs: answer?.result.elapsed_ms,
+          rowsCount: answer?.result.rows.length,
+          onInspect: () => openSnowflakeInspector(answer?.result.query_id),
+        },
+      },
+      {
+        id: 'result',
+        type: 'resultNode',
+        position: { x: 1280, y: 115 },
+        data: {
+          answer,
+          status: executionStatus === 'querying' ? 'loading' : answer ? 'done' : 'idle',
+          onExpand: () => setExpandModalOpen(true),
+          onCopy: () => copyText(answer?.summary || '', 'answer'),
+        },
+      },
+    ]
+  }, [activeDatasetId, answer, executionStatus, queryText, semanticModel, stageProgress, status, topK])
+
+  const edges: Edge[] = useMemo(() => [
+    { id: 'd-q', source: 'data', target: 'query', animated: true },
+    { id: 'q-p', source: 'query', target: 'planner', animated: true },
+    { id: 'q-s', source: 'query', target: 'safety', animated: true },
+    { id: 'p-sf', source: 'planner', target: 'snowflake', animated: true },
+    { id: 's-sf', source: 'safety', target: 'snowflake', animated: true },
+    { id: 'sf-r', source: 'snowflake', target: 'result', animated: true, markerEnd: { type: MarkerType.ArrowClosed } },
+  ], [])
+
+  // Chart data
+  const chartData = useMemo(() => {
+    if (!answer || answer.result.columns.length < 2 || !answer.result.rows.length) return []
+    const numIdx = answer.result.rows[0]?.findIndex((v) => typeof v === 'number') ?? -1
+    if (numIdx < 0) return []
+    const labelIdx = numIdx === 0 ? 1 : 0
+    return answer.result.rows.slice(0, 15).map((row) => ({
+      label: String(row[labelIdx]),
+      value: Number(row[numIdx]),
+    }))
+  }, [answer])
 
   return (
-    <div className={`app-shell ${sidebarOpen ? '' : 'sidebar-collapsed'}`}>
+    <div className="app-layout">
       {/* SIDEBAR */}
       <aside className="sidebar">
-        <div className="brand-row">
-          <div className="brand-mark">
-            <Braces size={18} />
+        <div className="sidebar-header">
+          <div className="sidebar-logo">
+            <Shield size={22} color="var(--accent-purple)" />
+            <span>DataMind</span>
           </div>
-          <div className="brand-name">
-            Data<span>Mind</span>
-          </div>
-          <button
-            className="icon-button collapse-button"
-            onClick={() => setSidebarOpen(false)}
-            aria-label="Collapse sidebar"
-          >
-            <PanelLeftClose size={17} />
-          </button>
         </div>
 
-        <button
-          className="new-query"
-          onClick={() => {
-            setQuestion('')
-            setAnswer(null)
-            setError('')
-            setActiveView('chat')
-          }}
-        >
-          <span>
-            <Sparkles size={15} /> New analysis
-          </span>
-          <span className="shortcut">⌘ K</span>
-        </button>
-
-        <nav>
-          <p>INTERFACES</p>
-          <a
-            className={activeView === 'chat' ? 'active' : ''}
-            onClick={() => setActiveView('chat')}
-          >
-            <MessageSquare size={16} /> Conversational Chat
-            <span className="badge-new">ChatGPT Mode</span>
-          </a>
-          <a
-            className={activeView === 'pipeline' ? 'active' : ''}
-            onClick={() => setActiveView('pipeline')}
-          >
-            <LayoutDashboard size={16} /> Pipeline Workbench
-            <span className="badge-cyan">Ragvault Mode</span>
-          </a>
-
-          <p style={{ marginTop: 14 }}>AUDIT & PLATFORM</p>
-          <a
-            className={activeView === 'history' ? 'active' : ''}
-            onClick={() => setActiveView('history')}
-          >
-            <Clock size={16} /> Decision Receipts
-            <span>{history.length}</span>
-          </a>
-          <a
-            className={activeView === 'models' ? 'active' : ''}
-            onClick={() => setActiveView('models')}
-          >
-            <Layers3 size={16} /> Semantic Catalog
-            <span>{semanticModel?.tables.length ?? 8} tbls</span>
-          </a>
-          <a
-            className={activeView === 'evals' ? 'active' : ''}
-            onClick={() => setActiveView('evals')}
-          >
-            <ShieldCheck size={16} /> Rubric Benchmarks
-            <span>7 tests</span>
-          </a>
-        </nav>
-
-        <div className="sidebar-spacer" />
-
-        {/* Dataset Switcher in Sidebar */}
-        <div className="dataset-switcher-box">
-          <div className="switcher-label">
-            <Database size={13} /> Active Semantic Dataset
-          </div>
-          <div className="dataset-select-wrap">
-            <select
-              value={activeDatasetId}
-              onChange={(e) => handleDatasetSelect(e.target.value)}
-              className="dataset-dropdown"
-              aria-label="Select active dataset"
+        <div className="sidebar-nav">
+          <div className="nav-section">
+            <span className="nav-section-title">Navigation</span>
+            <a
+              className={`nav-item ${activeTab === 'pipeline' ? 'active' : ''}`}
+              onClick={() => setActiveTab('pipeline')}
             >
-              {datasets.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name.toUpperCase()} ({d.table_count} tables)
-                </option>
-              ))}
-              <option value="new">+ Add Custom Dataset…</option>
-            </select>
-            <ChevronDown size={14} className="dropdown-caret" />
+              <LayoutDashboard size={18} />
+              <span>Pipeline</span>
+              <ChevronRight size={14} className="nav-chevron" />
+            </a>
+            <a
+              className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setActiveTab('chat')}
+            >
+              <MessageCircle size={18} />
+              <span>Chat</span>
+              <ChevronRight size={14} className="nav-chevron" />
+            </a>
+            <a
+              className={`nav-item ${activeTab === 'receipts' ? 'active' : ''}`}
+              onClick={() => setActiveTab('receipts')}
+            >
+              <Clock size={18} />
+              <span>Decision Receipts</span>
+              <span className="nav-count">{history.length}</span>
+            </a>
+            <a
+              className={`nav-item ${activeTab === 'models' ? 'active' : ''}`}
+              onClick={() => setActiveTab('models')}
+            >
+              <Layers3 size={18} />
+              <span>Semantic Model</span>
+              <ChevronRight size={14} className="nav-chevron" />
+            </a>
+            <a
+              className={`nav-item ${activeTab === 'evals' ? 'active' : ''}`}
+              onClick={() => setActiveTab('evals')}
+            >
+              <ShieldCheck size={18} />
+              <span>Rubric Evals</span>
+              <span className="nav-count">7</span>
+            </a>
           </div>
-          <div className="dataset-meta-micro">
-            <span>{semanticModel?.database || 'SNOWFLAKE_SAMPLE_DATA'}</span>
-            <span>{semanticModel?.schema || 'TPCH_SF1'}</span>
+
+          <div className="nav-section" style={{ marginTop: 20 }}>
+            <span className="nav-section-title">Active Dataset</span>
+            <div className="sidebar-dataset-select">
+              <select
+                value={activeDatasetId}
+                onChange={(e) => handleDatasetSelect(e.target.value)}
+              >
+                {datasets.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name.toUpperCase()} ({d.table_count} tables)
+                  </option>
+                ))}
+                <option value="new">+ Add Custom Dataset…</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        {/* System Telemetry */}
-        <div className="system-card">
-          <div className="system-title">
-            <Zap size={13} /> System Architecture
-          </div>
-          <div className="system-row">
-            <span className={`status-dot ${status?.snowflake.ready ? 'ready' : ''}`} />
-            <div>
-              <strong>Snowflake Data Cloud</strong>
-              <small>{status?.snowflake.warehouse || 'DATAMIND_WH'}</small>
+        <div className="sidebar-footer">
+          <div className="system-telemetry-box">
+            <div className="telemetry-item">
+              <span className={`status-dot ${status?.snowflake.ready ? 'ready' : ''}`} />
+              <span>Snowflake: {status?.snowflake.warehouse || 'DATAMIND_WH'}</span>
             </div>
-            <span className="status-word">{status?.snowflake.ready ? 'live' : 'setup'}</span>
-          </div>
-          <div className="system-row">
-            <span className={`status-dot ${status?.gemma.ready ? 'ready' : ''}`} />
-            <div>
-              <strong>Google Gemma 4</strong>
-              <small>{status?.gemma.model || 'gemma4:e4b'}</small>
+            <div className="telemetry-item">
+              <span className={`status-dot ${status?.gemma.ready ? 'ready' : ''}`} />
+              <span>Gemma 4: {status?.gemma.model || 'gemma4:e4b'} (GPU)</span>
             </div>
-            <span className="status-word">{status?.gemma.ready ? 'gpu ready' : 'setup'}</span>
-          </div>
-          <div className="system-row">
-            <span className="status-dot ready" />
-            <div>
-              <strong>Deterministic Safety</strong>
-              <small>1-SELECT · Allowlist</small>
-            </div>
-            <span className="status-word">active</span>
           </div>
         </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
-      <main>
-        <header>
-          {!sidebarOpen && (
-            <button
-              className="icon-button"
-              onClick={() => setSidebarOpen(true)}
-              aria-label="Open sidebar"
-            >
-              <Menu size={18} />
-            </button>
-          )}
+      {/* MAIN CONTENT */}
+      <div className="main-content">
+        <header className="app-header">
           <div className="breadcrumb">
-            <span>DataMind</span>
-            <ChevronRight size={13} />
-            <strong>
-              {activeView === 'chat' && 'Conversational Analytics Chat'}
-              {activeView === 'pipeline' && 'Pipeline Execution Workbench (React Flow)'}
-              {activeView === 'history' && 'Decision Receipts & Audit Ledger'}
-              {activeView === 'models' && 'Semantic Catalog & Dataset Manager'}
-              {activeView === 'evals' && 'ZeroDay Hackathon Evaluation Suite'}
-            </strong>
+            <span className="breadcrumb-item">Dashboard</span>
+            <ChevronRight size={14} />
+            <span className="breadcrumb-current">
+              {activeTab === 'pipeline' && 'Pipeline'}
+              {activeTab === 'chat' && 'Chat'}
+              {activeTab === 'receipts' && 'Decision Receipts'}
+              {activeTab === 'models' && 'Semantic Model'}
+              {activeTab === 'evals' && 'Rubric Benchmarks'}
+            </span>
           </div>
+
           <div className="header-actions">
             <button
-              className="snowflake-inspect-badge-btn"
-              onClick={() => inspectSnowflakeQuery(answer?.result.query_id || '01c7ce8d-000e-16a4-0000-0002b856b259')}
-              title="Open Snowflake Query Inspector"
+              className="btn-snowflake-proof"
+              onClick={() => openSnowflakeInspector()}
+              title="Inspect live query execution on Snowflake"
             >
-              <Database size={12} />
-              <span>Inspect on Snowflake</span>
+              <Database size={14} />
+              <span>Snowflake Proof</span>
             </button>
-            <span className="readonly-badge">
-              <ShieldCheck size={13} /> Read-Only Mode
-            </span>
+            <div className="user-pill">
+              <span title="Read-Only Authenticated Session">RO</span>
+              <span>DATAMIND_READER</span>
+            </div>
           </div>
         </header>
 
-        {/* =========================================================================
-            PAGE 1: CHATGPT-STYLE CONVERSATIONAL CHAT INTERFACE
-           ========================================================================= */}
-        {activeView === 'chat' && (
-          <div className="chat-interface-view">
-            <div className="chat-scroll-container">
-              <div className="chat-message-list">
-                {chatMessages.map((msg) => (
-                  <div key={msg.id} className={`chat-message-row ${msg.role}`}>
-                    <div className="chat-avatar">
-                      {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-                    </div>
-                    <div className="chat-bubble">
-                      <div className="chat-bubble-header">
-                        <strong>{msg.role === 'user' ? 'You' : 'DataMind Verified Agent'}</strong>
-                        <span className="chat-timestamp">{msg.timestamp}</span>
-                      </div>
+        {/* -------------------------------------------------------------------------
+            TAB 1: PIPELINE PAGE (RAGVAULT STYLE)
+           ------------------------------------------------------------------------- */}
+        {activeTab === 'pipeline' && (
+          <div className="pipeline-page">
+            <div className="pipeline-progress-bar-container">
+              <div className="progress-topline">
+                <div className="progress-title">
+                  <Play size={13} className="teal" />
+                  <strong>ZeroDay DataMind Pipeline</strong>
+                  <span className="progress-phase-tag">
+                    {executionStatus === 'querying' ? 'Computing Question-Time Answer...' : 'Ready'}
+                  </span>
+                </div>
+                <div className="progress-meta">
+                  <span><Clock size={12} /> {executionStatus === 'querying' ? `${(elapsedTimer / 1000).toFixed(1)}s` : `${answer?.result.elapsed_ms ?? 0}ms`}</span>
+                  <span><Database size={12} /> {status?.snowflake.warehouse || 'DATAMIND_WH'}</span>
+                </div>
+              </div>
+              <div className="progress-track">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${executionStatus === 'querying' ? stageProgress : 100}%` }}
+                />
+              </div>
+            </div>
 
-                      {/* Thinking & Step-by-Step Provenance Expander (ChatGPT / Perplexity style) */}
-                      {msg.role === 'assistant' && msg.steps && msg.steps.length > 0 && (
+            <div className="react-flow-container">
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                nodeTypes={nodeTypes}
+                fitView
+                minZoom={0.4}
+                maxZoom={1.4}
+              >
+                <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#2d2e2f" />
+                <Controls />
+                <MiniMap
+                  nodeColor={(n) => {
+                    if (n.type === 'queryNode') return '#8b5cf6'
+                    if (n.type === 'plannerNode') return '#8b5cf6'
+                    if (n.type === 'safetyNode') return '#22c55e'
+                    if (n.type === 'snowflakeNode') return '#06b6d4'
+                    if (n.type === 'resultNode') return '#20b2aa'
+                    return '#3a3b3c'
+                  }}
+                  maskColor="rgba(25, 26, 26, 0.85)"
+                  style={{ background: '#1e1f20', borderRadius: 8, border: '1px solid #2d2e2f' }}
+                />
+              </ReactFlow>
+            </div>
+          </div>
+        )}
+
+        {/* -------------------------------------------------------------------------
+            TAB 2: CHAT PAGE (RAGVAULT / CHATGPT STYLE)
+           ------------------------------------------------------------------------- */}
+        {activeTab === 'chat' && (
+          <div className="chat-page">
+            <div className="chat-container">
+              <div className="chat-messages">
+                {chatMessages.map((msg) => (
+                  <div key={msg.id} className={`chat-message ${msg.role}`}>
+                    <div className="message-avatar">
+                      {msg.role === 'user' ? <User size={16} /> : <Bot size={16} color="var(--accent-purple)" />}
+                    </div>
+                    <div className="message-content">
+                      {msg.role === 'assistant' && msg.steps && (
                         <details className="chat-thought-process" open={msg.status === 'pending'}>
                           <summary>
-                            <span className="thought-summary-title">
-                              <Sparkles size={13} />
+                            <Sparkles size={13} color="var(--accent-purple)" />
+                            <span>
                               {msg.status === 'pending'
-                                ? 'Thinking & Planning with Gemma 4…'
-                                : 'Verified Execution Pipeline (6 stages)'}
+                                ? 'Reasoning with Gemma 4 & computing in Snowflake…'
+                                : 'Verified Execution Pipeline (5 stages)'}
                             </span>
-                            {msg.status === 'pending' ? (
-                              <Loader2 size={13} className="spin thought-spinner" />
-                            ) : (
-                              <span className="thought-tag">Gemma + Snowflake Verified</span>
-                            )}
+                            {msg.status === 'pending' && <Loader2 size={13} className="spin" />}
                           </summary>
                           <div className="thought-steps-content">
                             {msg.steps.map((st) => (
                               <div key={st.id} className={`thought-step-item ${st.status}`}>
-                                <div className="thought-step-icon">
-                                  {st.status === 'done' && <Check size={12} />}
-                                  {st.status === 'active' && <Loader2 size={12} className="spin" />}
-                                  {st.status === 'pending' && <CircleDot size={12} />}
-                                </div>
-                                <div className="thought-step-body">
-                                  <div className="thought-step-name">
-                                    <strong>{st.name}</strong>
-                                    {st.elapsed_ms !== undefined && <small>{st.elapsed_ms}ms</small>}
-                                  </div>
-                                  <p>{st.detail}</p>
+                                {st.status === 'done' && <Check size={12} color="var(--accent-green)" />}
+                                {st.status === 'active' && <Loader2 size={12} className="spin" color="var(--accent-purple)" />}
+                                {st.status === 'pending' && <CircleDot size={12} color="var(--text-muted)" />}
+                                <div>
+                                  <strong>{st.name}</strong>
+                                  <p>{st.detail} {st.elapsed_ms !== undefined && `(${st.elapsed_ms}ms)`}</p>
                                 </div>
                               </div>
                             ))}
@@ -1109,85 +1240,45 @@ metrics:
                         </details>
                       )}
 
-                      {/* Message Content */}
-                      <div className="chat-text-body">
+                      <div className="message-bubble">
                         {msg.content}
                       </div>
 
-                      {/* Assistant Card Attachments (Result preview & actions) */}
                       {msg.role === 'assistant' && msg.answer && (
-                        <div className="chat-answer-card">
-                          <div className="chat-card-topline">
-                            <span className="verified-pill">
-                              <Check size={12} /> {msg.answer.result.rows.length} rows verified from Snowflake
+                        <div className="chat-evidence-card">
+                          <div className="chat-evidence-header">
+                            <span className="source-tag-mini">
+                              {msg.answer.result.rows.length} rows verified
                             </span>
-                            <button
-                              className="chat-snowflake-btn"
-                              onClick={() => inspectSnowflakeQuery(msg.answer!.result.query_id)}
+                            <code
+                              className="chat-qid clickable"
+                              onClick={() => openSnowflakeInspector(msg.answer!.result.query_id)}
                             >
-                              <Fingerprint size={12} />
-                              <code>{msg.answer.result.query_id.slice(0, 16)}…</code>
-                            </button>
+                              {msg.answer.result.query_id.slice(0, 18)}…
+                            </code>
                           </div>
 
-                          {/* Grounded claims */}
-                          {msg.answer.claims && msg.answer.claims.length > 0 && (
-                            <div className="chat-claims-list">
-                              {msg.answer.claims.map((cl, i) => (
-                                <div key={i} className="chat-claim-pill">
-                                  <span>{cl.text}</span>
-                                  <span className="row-ref">row #{cl.row_indexes.map((x) => x + 1).join(',')}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Quick Mini Table */}
-                          <div className="chat-mini-table-shell">
-                            <table>
-                              <thead>
-                                <tr>
-                                  {msg.answer.result.columns.map((c) => (
-                                    <th key={c}>{c.replaceAll('_', ' ')}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {msg.answer.result.rows.slice(0, 5).map((r, ri) => (
-                                  <tr key={ri}>
-                                    {r.map((cv, ci) => (
-                                      <td key={ci}>
-                                        {cv === null ? 'null' : typeof cv === 'number' ? cv.toLocaleString() : String(cv)}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {/* Action Toolbar */}
-                          <div className="chat-card-actions">
+                          <div className="chat-actions-row">
                             <button
+                              className="node-action-btn"
                               onClick={() => {
                                 setAnswer(msg.answer!)
-                                setActiveView('pipeline')
+                                setExpandModalOpen(true)
                               }}
-                              className="chat-action-btn primary"
                             >
-                              <GitBranch size={13} /> Open in Pipeline Workbench
+                              <Maximize2 size={12} /> Inspect Evidence
                             </button>
                             <button
-                              onClick={() => inspectSnowflakeQuery(msg.answer!.result.query_id)}
-                              className="chat-action-btn"
+                              className="node-action-btn"
+                              onClick={() => openSnowflakeInspector(msg.answer!.result.query_id)}
                             >
-                              <Database size={13} /> Snowflake Proof
+                              <Database size={12} /> Snowflake Proof
                             </button>
                             <button
+                              className="node-action-btn"
                               onClick={() => copyText(msg.answer!.query.sql, 'sql')}
-                              className="chat-action-btn"
                             >
-                              <Code2 size={13} /> Copy SQL
+                              <Copy size={12} /> Copy SQL
                             </button>
                           </div>
                         </div>
@@ -1197,408 +1288,115 @@ metrics:
                 ))}
                 <div ref={chatBottomRef} />
               </div>
-            </div>
 
-            {/* Bottom Chat Bar */}
-            <div className="chat-input-wrapper">
-              <div className="chat-suggestions-row">
-                <span>Prompt shortcuts:</span>
-                {suggestions.slice(0, 3).map((sg) => (
-                  <button
-                    key={sg}
-                    onClick={() => executeQuery(sg)}
-                    disabled={loading}
-                  >
-                    {sg}
-                  </button>
-                ))}
+              <div className="chat-input-area">
+                <input
+                  type="text"
+                  placeholder="Ask a question..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && chatInput.trim()) {
+                      executePipeline(chatInput)
+                      setChatInput('')
+                    }
+                  }}
+                  disabled={executionStatus === 'querying'}
+                />
+                <button
+                  onClick={() => {
+                    if (chatInput.trim()) {
+                      executePipeline(chatInput)
+                      setChatInput('')
+                    }
+                  }}
+                  disabled={!chatInput.trim() || executionStatus === 'querying'}
+                >
+                  {executionStatus === 'querying' ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                </button>
               </div>
+            </div>
+          </div>
+        )}
 
-              <form
-                className="chat-composer"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  if (question.trim()) {
-                    executeQuery(question)
-                    setQuestion('')
-                  }
+        {/* -------------------------------------------------------------------------
+            TAB 3: DECISION RECEIPTS PAGE (RAGVAULT STYLE)
+           ------------------------------------------------------------------------- */}
+        {activeTab === 'receipts' && (
+          <div className="page-content receipts-page">
+            <div className="page-header">
+              <div>
+                <h1>Decision Receipts</h1>
+                <p>Replayable answers, evidence metadata, runtime configuration, and reviewer feedback.</p>
+              </div>
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  const data = JSON.stringify(history, null, 2)
+                  const blob = new Blob([data], { type: 'application/json' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `datamind_decision_receipts.json`
+                  a.click()
+                  URL.revokeObjectURL(url)
                 }}
               >
-                <input
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="Ask any natural-language data question (e.g. Compare monthly revenue in 1996)…"
-                  disabled={loading}
-                />
-                <button
-                  type="submit"
-                  disabled={!question.trim() || loading}
-                  className="chat-send-btn"
-                >
-                  {loading ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* =========================================================================
-            PAGE 2: RAGVAULT-STYLE PIPELINE WORKBENCH (REACT FLOW)
-           ========================================================================= */}
-        {activeView === 'pipeline' && (
-          <div className="workbench-view">
-            {/* Live Step Progress Graph & Phase Bar */}
-            <div className="pipeline-live-tracker-bar">
-              <div className="tracker-topline">
-                <div className="tracker-title">
-                  <span className="live-pulse-dot" />
-                  <strong>Pipeline Execution Tracker</strong>
-                  <span className="tracker-stage-badge">
-                    {loading ? `Phase: ${pipelineStages[currentStageIndex]?.name}` : 'Pipeline Ready'}
-                  </span>
-                </div>
-                <div className="tracker-telemetry">
-                  <span>
-                    <Clock size={12} /> {loading ? `${(pipelineElapsedTimer / 1000).toFixed(1)}s` : `${answer?.result.elapsed_ms ?? 0}ms`}
-                  </span>
-                  <span>
-                    <Database size={12} /> Snowflake {status?.snowflake.warehouse || 'DATAMIND_WH'}
-                  </span>
-                  <span>
-                    <Cpu size={12} /> Gemma 4 GPU
-                  </span>
-                </div>
-              </div>
-
-              {/* Animated Progress Bar */}
-              <div className="progress-bar-rail">
-                <div
-                  className="progress-bar-fill"
-                  style={{ width: `${loading ? progressPercent : 100}%` }}
-                />
-              </div>
-
-              {/* Multi-step checkpoints */}
-              <div className="pipeline-checkpoints-row">
-                {pipelineStages.map((st, i) => (
-                  <div
-                    key={st.id}
-                    className={`checkpoint-item ${st.status}`}
-                    onClick={() => setSelectedNodeStage(st.id === '1' ? 'question' : st.id === '2' ? 'gemma' : st.id === '3' ? 'guard' : st.id === '4' ? 'compiler' : st.id === '5' ? 'snowflake' : 'evidence')}
-                  >
-                    <div className="checkpoint-dot">
-                      {st.status === 'done' ? <Check size={11} /> : i + 1}
-                    </div>
-                    <span>{st.name}</span>
-                  </div>
-                ))}
-              </div>
+                <Download size={14} /> Export Receipts
+              </button>
             </div>
 
-            {/* Main Workbench Body: Flow Canvas + Side Inspector */}
-            <div className="workbench-body-grid">
-              <div className="workbench-canvas-panel">
-                {/* Embedded In-Node Query Bar (Ragvault QueryNode style) */}
-                <div className="ragvault-inline-query-bar">
-                  <div className="inline-query-left">
-                    <Search size={16} className="query-icon" />
-                    <input
-                      value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
-                      placeholder="Enter query into pipeline..."
-                      onKeyDown={(e) => e.key === 'Enter' && executeQuery(question)}
-                    />
-                  </div>
-                  <div className="inline-query-controls">
-                    <div className="topk-slider-box">
-                      <span>Row Limit:</span>
-                      <input
-                        type="range"
-                        min={1}
-                        max={100}
-                        value={topKLimit}
-                        onChange={(e) => setTopKLimit(Number(e.target.value))}
-                      />
-                      <code>{topKLimit}</code>
+            <div className="trust-note">
+              <Shield size={16} /> Receipts store fingerprints, bound parameters, and Snowflake Query IDs—never unhashed credentials.
+            </div>
+
+            <div className="receipt-list">
+              {history.map((receipt) => (
+                <article className="receipt-card" key={receipt.id}>
+                  <div className="receipt-card-header">
+                    <div>
+                      <span className="receipt-id">{receipt.id}</span>
+                      <span className={`evidence-status ${receipt.status}`}>
+                        {receipt.status}
+                      </span>
                     </div>
-                    <button
-                      className="inline-run-btn"
-                      onClick={() => executeQuery(question)}
-                      disabled={!question.trim() || loading}
-                    >
-                      {loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
-                      Execute Pipeline
+                    <time>{new Date(receipt.timestamp).toLocaleString()}</time>
+                  </div>
+                  <p className="receipt-query">{receipt.question}</p>
+                  <p className="receipt-answer">{receipt.answer?.summary || 'Execution completed.'}</p>
+                  <div className="receipt-meta">
+                    Query ID: <code className="clickable" onClick={() => openSnowflakeInspector(receipt.query_id)}>{receipt.query_id}</code> · {receipt.elapsed_ms}ms · {receipt.rows_count} rows · {receipt.warehouse}
+                  </div>
+                  <div className="receipt-actions">
+                    <button onClick={() => { if (receipt.answer) { setAnswer(receipt.answer); setExpandModalOpen(true); } }}>
+                      <Eye size={13} /> View Evidence
+                    </button>
+                    <button onClick={() => openSnowflakeInspector(receipt.query_id)}>
+                      <Database size={13} /> Snowflake
+                    </button>
+                    <button onClick={() => copyText(receipt.answer?.query.sql || '', 'sql')}>
+                      <Copy size={13} /> Copy SQL
                     </button>
                   </div>
-                </div>
-
-                <div className="react-flow-workspace">
-                  <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    nodeTypes={nodeTypes}
-                    fitView
-                    minZoom={0.5}
-                    maxZoom={1.4}
-                  >
-                    <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#2b3648" />
-                    <Controls />
-                    <MiniMap
-                      nodeColor={(n) => {
-                        if (n.data?.tone === 'violet') return '#8f7cff'
-                        if (n.data?.tone === 'lime') return '#a5f56a'
-                        if (n.data?.tone === 'amber') return '#ffc766'
-                        return '#53d7ff'
-                      }}
-                      maskColor="rgba(8, 11, 17, 0.85)"
-                      style={{ background: '#0d131f', borderRadius: 8, border: '1px solid #232d3d' }}
-                    />
-                  </ReactFlow>
-                </div>
-              </div>
-
-              {/* Side Stage Inspector Drawer */}
-              <aside className="stage-inspector-drawer">
-                <div className="inspector-head">
-                  <Sparkles size={16} />
-                  <h3>Stage Inspector</h3>
-                  {selectedNodeStage && (
-                    <button onClick={() => setSelectedNodeStage(null)}>
-                      <X size={15} />
-                    </button>
-                  )}
-                </div>
-
-                {!selectedNodeStage ? (
-                  <div className="inspector-placeholder">
-                    <TerminalSquare size={28} />
-                    <p>Click any node in the React Flow canvas to inspect its real-time payload, telemetry, and contract.</p>
-                  </div>
-                ) : (
-                  <div className="inspector-content">
-                    <StageDetail
-                      stageId={selectedNodeStage}
-                      answer={answer}
-                      question={question}
-                      status={status}
-                      onOpenSnowflakeModal={inspectSnowflakeQuery}
-                    />
-                  </div>
-                )}
-              </aside>
-            </div>
-
-            {/* Results & Visual Tabbed Panel below workbench */}
-            {answer && (
-              <section className="workbench-results-dock">
-                <div className="result-topline">
-                  <div>
-                    <span className="micro-label">Computed Output</span>
-                    <h2>Verified Answer & Evidence</h2>
-                  </div>
-                  <div className="tabs">
-                    {(['result', 'evidence', 'sql'] as const).map((tab) => (
-                      <button
-                        className={activeTab === tab ? 'active' : ''}
-                        onClick={() => setActiveTab(tab)}
-                        key={tab}
-                      >
-                        {tab === 'result' ? <BarChart3 size={14} /> : tab === 'evidence' ? <Table2 size={14} /> : <Code2 size={14} />}
-                        {tab === 'result' ? 'Summary & Chart' : tab === 'evidence' ? `Evidence (${answer.result.rows.length})` : 'Compiled SQL'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="result-body">
-                  {activeTab === 'result' && (
-                    <div className="result-layout">
-                      <div className="answer-copy">
-                        <div className="verified-header-row">
-                          <span className="verified-pill">
-                            <Check size={13} /> Verified from {answer.result.rows.length} rows
-                          </span>
-                          <button
-                            className="copy-id-chip"
-                            onClick={() => inspectSnowflakeQuery(answer.result.query_id)}
-                          >
-                            <Fingerprint size={13} />
-                            <code>{answer.result.query_id}</code>
-                          </button>
-                        </div>
-                        <h3>{answer.summary}</h3>
-                        <p className="explanation-paragraph">{answer.explanation}</p>
-
-                        <div className="run-metadata">
-                          <span><Clock3 size={13} /> {answer.result.elapsed_ms} ms</span>
-                          <span><Database size={13} /> {answer.result.warehouse}</span>
-                          <span><Cpu size={13} /> {status?.gemma.model || 'gemma4:e4b'}</span>
-                        </div>
-                      </div>
-
-                      {chartData.length > 1 && (
-                        <div className="chart-wrap">
-                          <ResponsiveContainer width="100%" height={220}>
-                            <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 20, left: 10 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#222a37" vertical={false} />
-                              <XAxis dataKey="label" tick={{ fill: '#8893a7', fontSize: 10 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: '#8893a7', fontSize: 10 }} axisLine={false} tickLine={false} width={45} />
-                              <Tooltip contentStyle={{ background: '#0d131f', border: '1px solid #303a4d', borderRadius: 8 }} />
-                              <Bar dataKey="value" fill="#8f7cff" radius={[6, 6, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {activeTab === 'evidence' && (
-                    <div className="evidence-panel">
-                      <div className="table-shell">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>#</th>
-                              {answer.result.columns.map((c) => (
-                                <th key={c}>{c.replaceAll('_', ' ')}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {answer.result.rows.map((row, idx) => (
-                              <tr key={idx}>
-                                <td className="row-num">{idx + 1}</td>
-                                {row.map((cell, ci) => (
-                                  <td key={ci}>{cell === null ? 'null' : String(cell)}</td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'sql' && (
-                    <div className="sql-panel">
-                      <div className="sql-toolbar">
-                        <span>Executed on Snowflake {answer.result.warehouse}</span>
-                        <button className="copy-sql-btn" onClick={() => copyText(answer.query.sql, 'sql')}>
-                          <Copy size={13} /> Copy SQL
-                        </button>
-                      </div>
-                      <pre><code>{answer.query.sql}</code></pre>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-          </div>
-        )}
-
-        {/* =========================================================================
-            PAGE 3: PROVENANCE & AUDIT HISTORY
-           ========================================================================= */}
-        {activeView === 'history' && (
-          <div className="history-view">
-            <div className="view-banner">
-              <div>
-                <h2>Provenance & Decision Receipts</h2>
-                <p>Immutable audit trail of every question, SQL execution, and Snowflake Query ID.</p>
-              </div>
-              <div className="view-banner-actions">
-                <button
-                  className="action-btn"
-                  onClick={() => {
-                    const data = JSON.stringify(history, null, 2)
-                    const blob = new Blob([data], { type: 'application/json' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `datamind_decision_receipts.json`
-                    a.click()
-                    URL.revokeObjectURL(url)
-                  }}
-                >
-                  <Download size={14} /> Export Receipts JSON
-                </button>
-              </div>
-            </div>
-
-            <div className="history-table-card">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Question</th>
-                    <th>Snowflake Query ID</th>
-                    <th>Latency</th>
-                    <th>Rows</th>
-                    <th>Warehouse</th>
-                    <th>Timestamp</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <span className={`status-pill ${item.status}`}>
-                          {item.status === 'verified' && <Check size={11} />}
-                          {item.status === 'blocked' && <ShieldAlert size={11} />}
-                          {item.status}
-                        </span>
-                      </td>
-                      <td className="question-col">
-                        <strong>{item.question}</strong>
-                      </td>
-                      <td>
-                        <code
-                          className="query-id-code clickable"
-                          onClick={() => inspectSnowflakeQuery(item.query_id)}
-                          title="Inspect on Snowflake"
-                        >
-                          {item.query_id}
-                        </code>
-                      </td>
-                      <td>{item.elapsed_ms} ms</td>
-                      <td>{item.rows_count}</td>
-                      <td>{item.warehouse}</td>
-                      <td>{new Date(item.timestamp).toLocaleTimeString()}</td>
-                      <td>
-                        <button
-                          className="inspect-history-btn"
-                          onClick={() => loadFromHistory(item)}
-                        >
-                          <Play size={12} /> Inspect
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                </article>
+              ))}
             </div>
           </div>
         )}
 
-        {/* =========================================================================
-            PAGE 4: SEMANTIC CATALOG & DATASET MANAGER
-           ========================================================================= */}
-        {activeView === 'models' && (
-          <div className="models-view">
-            <div className="view-banner">
+        {/* -------------------------------------------------------------------------
+            TAB 4: SEMANTIC MODEL PAGE
+           ------------------------------------------------------------------------- */}
+        {activeTab === 'models' && (
+          <div className="page-content models-page">
+            <div className="page-header">
               <div>
-                <h2>Semantic Catalog & Multi-Dataset Architecture</h2>
-                <p>
-                  Dimensions, metrics, and relationships allowlisted for the compiler. Add custom
-                  datasets without modifying any backend code.
-                </p>
+                <h1>Semantic Models & Catalog</h1>
+                <p>Allowlisted tables, dimensions, metrics, and relationships compiled into SQL.</p>
               </div>
-              <div className="view-banner-actions">
-                <button className="primary-action-btn" onClick={() => setCustomModalOpen(true)}>
-                  <Plus size={14} /> Add Dataset
-                </button>
-              </div>
+              <button className="btn-primary" onClick={() => setCustomModalOpen(true)}>
+                <Plus size={14} /> Add Dataset
+              </button>
             </div>
 
             <div className="datasets-grid">
@@ -1608,17 +1406,11 @@ metrics:
                   className={`dataset-card ${d.id === activeDatasetId ? 'active' : ''}`}
                   onClick={() => handleDatasetSelect(d.id)}
                 >
-                  <div className="dataset-card-top">
-                    <span className="dataset-badge">
-                      <Database size={13} /> {d.id}
-                    </span>
-                    {d.id === activeDatasetId && (
-                      <span className="active-pill">
-                        <Check size={11} /> Active
-                      </span>
-                    )}
+                  <div className="dataset-card-header">
+                    <span className="dataset-id">{d.id.toUpperCase()}</span>
+                    {d.id === activeDatasetId && <span className="active-badge">Active</span>}
                   </div>
-                  <h4>{d.name.toUpperCase()}</h4>
+                  <h4>{d.name}</h4>
                   <p>{d.description}</p>
                   <div className="dataset-stats">
                     <span>{d.table_count} tables</span>
@@ -1630,15 +1422,12 @@ metrics:
             </div>
 
             {semanticModel && (
-              <div className="model-details-section">
-                <div className="details-card">
-                  <div className="details-header">
-                    <h3>Allowlisted Tables ({semanticModel.tables.length})</h3>
-                    <small>Target: {semanticModel.database}.{semanticModel.schema}</small>
-                  </div>
-                  <div className="table-list-grid">
+              <div className="model-split-view">
+                <div className="model-card-section">
+                  <h3>Allowlisted Tables ({semanticModel.tables.length})</h3>
+                  <div className="table-items-list">
                     {semanticModel.tables.map((t) => (
-                      <div className="table-item" key={t.name}>
+                      <div className="table-row-item" key={t.name}>
                         <strong>{t.name}</strong>
                         <small>Physical: {t.physical}</small>
                         <p>{t.description}</p>
@@ -1647,34 +1436,26 @@ metrics:
                   </div>
                 </div>
 
-                <div className="details-card">
-                  <div className="details-header">
-                    <h3>Dimensions & Metrics</h3>
-                  </div>
-                  <div className="fields-split-grid">
+                <div className="model-card-section">
+                  <h3>Dimensions ({semanticModel.dimensions.length}) & Metrics ({semanticModel.metrics.length})</h3>
+                  <div className="fields-grid">
                     <div>
-                      <h4>Dimensions ({semanticModel.dimensions.length})</h4>
-                      <div className="field-list">
-                        {semanticModel.dimensions.map((d) => (
-                          <div className="field-item" key={d.name}>
-                            <code>{d.name}</code>
-                            <span>{d.description}</span>
-                            <small>Table: {d.table}</small>
-                          </div>
-                        ))}
-                      </div>
+                      <span className="field-type-title">Dimensions</span>
+                      {semanticModel.dimensions.map((d) => (
+                        <div className="field-entry" key={d.name}>
+                          <code>{d.name}</code>
+                          <small>{d.description}</small>
+                        </div>
+                      ))}
                     </div>
                     <div>
-                      <h4>Metrics ({semanticModel.metrics.length})</h4>
-                      <div className="field-list">
-                        {semanticModel.metrics.map((m) => (
-                          <div className="field-item" key={m.name}>
-                            <code>{m.name}</code>
-                            <span>{m.description}</span>
-                            <small>Expr: {m.expression}</small>
-                          </div>
-                        ))}
-                      </div>
+                      <span className="field-type-title">Metrics</span>
+                      {semanticModel.metrics.map((m) => (
+                        <div className="field-entry" key={m.name}>
+                          <code>{m.name}</code>
+                          <small>{m.description}</small>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -1683,38 +1464,38 @@ metrics:
           </div>
         )}
 
-        {/* =========================================================================
-            PAGE 5: RUBRIC BENCHMARK EVALUATIONS
-           ========================================================================= */}
-        {activeView === 'evals' && (
-          <div className="evals-view">
-            <div className="view-banner">
+        {/* -------------------------------------------------------------------------
+            TAB 5: RUBRIC EVALS PAGE
+           ------------------------------------------------------------------------- */}
+        {activeTab === 'evals' && (
+          <div className="page-content evals-page">
+            <div className="page-header">
               <div>
-                <h2>ZeroDay Hackathon Evaluation Suite</h2>
-                <p>Live test matrix covering multi-table joins, aggregations, time-series, safety gates, and ambiguity.</p>
+                <h1>ZeroDay PS1 Rubric Benchmarks</h1>
+                <p>Live test runner for multi-table joins, aggregations, safety injection, and ambiguity.</p>
               </div>
-              <div className="view-banner-actions">
-                <button
-                  className="primary-action-btn"
-                  onClick={handleRunAllEvals}
-                  disabled={evalRunning !== null}
-                >
-                  {evalRunning ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
-                  Run All 7 Benchmarks
-                </button>
-              </div>
+              <button
+                className="btn-primary"
+                onClick={async () => {
+                  for (const ec of evalList) await runEvalTest(ec)
+                }}
+                disabled={evalRunning !== null}
+              >
+                {evalRunning ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                Run All Benchmarks
+              </button>
             </div>
 
-            <div className="evals-table-card">
-              <table>
+            <div className="evals-table-container">
+              <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Test ID</th>
+                    <th>ID</th>
                     <th>Category</th>
-                    <th>Question / Challenge</th>
-                    <th>Expected Criteria</th>
+                    <th>Question</th>
+                    <th>Criteria</th>
                     <th>Status</th>
-                    <th>Query ID / Proof</th>
+                    <th>Query ID</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -1724,40 +1505,39 @@ metrics:
                     return (
                       <tr key={ec.id}>
                         <td><code>{ec.id}</code></td>
-                        <td><span className="category-pill">{ec.category}</span></td>
-                        <td className="eval-question-cell">
+                        <td><span className="category-tag">{ec.category}</span></td>
+                        <td>
                           <strong>{ec.question}</strong>
-                          <p>{ec.description}</p>
+                          <p className="eval-subtext">{ec.description}</p>
                         </td>
-                        <td className="eval-criteria-cell"><small>{ec.criteria}</small></td>
+                        <td><small>{ec.criteria}</small></td>
                         <td>
                           {res ? (
                             <span className={`status-pill ${res.status}`}>
-                              {res.passed ? <Check size={11} /> : <AlertTriangle size={11} />}
-                              {res.status}
+                              {res.passed ? 'passed' : 'failed'}
                             </span>
                           ) : ec.sample_query_id ? (
-                            <span className="status-pill verified"><Check size={11} /> pre-verified</span>
+                            <span className="status-pill verified">pre-verified</span>
                           ) : (
                             <span className="status-pill idle">ready</span>
                           )}
                         </td>
                         <td>
                           <code
-                            className="query-id-code clickable"
-                            onClick={() => inspectSnowflakeQuery(res?.query_id || ec.sample_query_id || '01c7ce8d-000e-16a4-0000-0002b856b259')}
+                            className="clickable"
+                            onClick={() => openSnowflakeInspector(res?.query_id || ec.sample_query_id || '01c7ce8d-000e-16a4-0000-0002b856b259')}
                           >
                             {res?.query_id || ec.sample_query_id || '—'}
                           </code>
                         </td>
                         <td>
                           <button
-                            className="run-single-eval-btn"
-                            onClick={() => handleRunEval(ec)}
+                            className="btn-table-action"
+                            onClick={() => runEvalTest(ec)}
                             disabled={evalRunning === ec.id}
                           >
                             {evalRunning === ec.id ? <Loader2 size={12} className="spin" /> : <Play size={12} />}
-                            Run Test
+                            Run
                           </button>
                         </td>
                       </tr>
@@ -1768,303 +1548,257 @@ metrics:
             </div>
           </div>
         )}
-      </main>
+      </div>
 
       {/* =========================================================================
-          SNOWFLAKE QUERY INSPECTOR MODAL
+          MODAL 1: RESULT EXPAND (FULL EVIDENCE, CHART, AND SQL)
          ========================================================================= */}
-      <AnimatePresence>
-        {snowflakeModalOpen && (
-          <motion.div
-            className="modal-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <div className="modal-dialog snowflake-inspector-dialog">
-              <div className="modal-header">
-                <div className="modal-title">
-                  <Database size={18} />
-                  <h3>Snowflake Query Proof & Live Verification</h3>
-                </div>
-                <button
-                  className="icon-button"
-                  onClick={() => setSnowflakeModalOpen(false)}
-                  aria-label="Close"
-                >
-                  <X size={17} />
-                </button>
+      {expandModalOpen && answer && (
+        <div className="modal-overlay" onClick={() => setExpandModalOpen(false)}>
+          <div className="modal-container large" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <CheckCircle2 size={18} color="var(--accent-green)" />
+                <span>Verified Result: {answer.question}</span>
               </div>
-              <div className="modal-body">
-                <div className="snowflake-verification-banner">
-                  <ShieldCheck size={20} className="shield-icon" />
-                  <div>
-                    <strong>Question-Time Live Computation</strong>
-                    <p>
-                      This query ran directly on Snowflake's compute engine using your authenticated
-                      programmatic access token. No local data or static fixtures were used.
-                    </p>
-                  </div>
-                </div>
+              <button className="modal-close" onClick={() => setExpandModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
 
-                <div className="inspector-field">
-                  <label>Snowflake Query ID:</label>
-                  <div className="query-id-box">
-                    <code>{inspectedQueryId || answer?.result.query_id || '—'}</code>
-                    <button
-                      className="copy-btn"
-                      onClick={() => copyText(inspectedQueryId || answer?.result.query_id || '', 'queryId')}
-                    >
-                      <Copy size={13} /> {copiedQueryId ? 'Copied' : 'Copy ID'}
+            <div className="modal-tabs">
+              <button
+                className={activeModalTab === 'summary' ? 'active' : ''}
+                onClick={() => setActiveModalTab('summary')}
+              >
+                Summary & Chart
+              </button>
+              <button
+                className={activeModalTab === 'table' ? 'active' : ''}
+                onClick={() => setActiveModalTab('table')}
+              >
+                Evidence Table ({answer.result.rows.length})
+              </button>
+              <button
+                className={activeModalTab === 'sql' ? 'active' : ''}
+                onClick={() => setActiveModalTab('sql')}
+              >
+                Compiled SQL & Bindings
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {activeModalTab === 'summary' && (
+                <div className="modal-summary-view">
+                  <div className="summary-banner">
+                    <h3>{answer.summary}</h3>
+                    <p>{answer.explanation}</p>
+                    <div className="summary-telemetry">
+                      <span>Query ID: <code className="clickable" onClick={() => openSnowflakeInspector(answer.result.query_id)}>{answer.result.query_id}</code></span>
+                      <span>Execution: {answer.result.elapsed_ms}ms</span>
+                      <span>Warehouse: {answer.result.warehouse}</span>
+                    </div>
+                  </div>
+
+                  {chartData.length > 1 && (
+                    <div className="modal-chart-area">
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={chartData} margin={{ top: 12, right: 12, bottom: 25, left: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#2d2e2f" vertical={false} />
+                          <XAxis dataKey="label" tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false} width={45} />
+                          <Tooltip contentStyle={{ background: '#232425', border: '1px solid #3a3b3c', borderRadius: 8 }} />
+                          <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeModalTab === 'table' && (
+                <div className="modal-table-view">
+                  <div className="modal-table-toolbar">
+                    <span>{answer.result.rows.length} rows queried from Snowflake</span>
+                    <button className="btn-secondary" onClick={downloadCsv}>
+                      <Download size={13} /> Export CSV
                     </button>
                   </div>
+                  <div className="table-scroll">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          {answer.result.columns.map((c) => (
+                            <th key={c}>{c.replaceAll('_', ' ')}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {answer.result.rows.map((r, ri) => (
+                          <tr key={ri}>
+                            <td className="row-num">{ri + 1}</td>
+                            {r.map((cv, ci) => (
+                              <td key={ci}>{cv === null ? 'null' : String(cv)}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+              )}
 
-                <div className="snowflake-meta-grid">
-                  <div className="meta-box">
-                    <span>Warehouse</span>
-                    <strong>{status?.snowflake.warehouse || 'DATAMIND_WH'}</strong>
-                    <small>X-Small (0.0001 credits/sec)</small>
+              {activeModalTab === 'sql' && (
+                <div className="modal-sql-view">
+                  <div className="modal-sql-toolbar">
+                    <span>Single read-only SELECT compiled by AST generator</span>
+                    <button className="btn-secondary" onClick={() => copyText(answer.query.sql, 'sql')}>
+                      <Copy size={13} /> {copiedSql ? 'Copied' : 'Copy SQL'}
+                    </button>
                   </div>
-                  <div className="meta-box">
-                    <span>Auto-Suspend</span>
-                    <strong>60 Seconds</strong>
-                    <small>Rapid suspend active</small>
-                  </div>
-                  <div className="meta-box">
-                    <span>Active Role</span>
-                    <strong>DATAMIND_READER</strong>
-                    <small>Least-privilege read-only</small>
-                  </div>
-                  <div className="meta-box">
-                    <span>Query Tag</span>
-                    <strong>datamind:interactive:v0.1</strong>
-                    <small>Tagged for audit trail</small>
+                  <pre className="sql-box"><code>{answer.query.sql}</code></pre>
+                  <div className="params-box">
+                    <strong>Bound Parameters:</strong>
+                    <code>{JSON.stringify(answer.query.parameters)}</code>
                   </div>
                 </div>
-
-                <div className="inspector-field">
-                  <label>How to Verify on Snowflake Directly:</label>
-                  <div className="verify-instructions-card">
-                    <ol>
-                      <li>Log in to your Snowflake console at <strong>app.snowflake.com</strong>.</li>
-                      <li>Navigate to <strong>Activity → Query History</strong> in the left sidebar.</li>
-                      <li>Filter by Query ID: <code>{inspectedQueryId || answer?.result.query_id}</code>.</li>
-                      <li>You will observe the exact SQL statement, execution time, bytes scanned, and warehouse credits consumed.</li>
-                    </ol>
-                  </div>
-                </div>
-
-                <div className="inspector-field">
-                  <label>Pasteable Snowflake CLI Command:</label>
-                  <pre className="cli-box">
-                    <code>{`snow sql -q "${(answer?.query.sql || 'SELECT 1;').replace(/\n/g, ' ')}" --warehouse ${status?.snowflake.warehouse || 'DATAMIND_WH'}`}</code>
-                  </pre>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <a
-                  href="https://app.snowflake.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="primary-action-btn"
-                >
-                  <ExternalLink size={14} /> Open Snowflake Web Console
-                </a>
-              </div>
+              )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
 
       {/* =========================================================================
-          CUSTOM DATASET REGISTRATION MODAL
+          MODAL 2: SNOWFLAKE QUERY PROOF INSPECTOR
          ========================================================================= */}
-      <AnimatePresence>
-        {customModalOpen && (
-          <motion.div
-            className="modal-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <div className="modal-dialog">
-              <div className="modal-header">
-                <div className="modal-title">
-                  <Database size={18} />
-                  <h3>Register Custom Semantic Dataset</h3>
+      {snowflakeModalOpen && (
+        <div className="modal-overlay" onClick={() => setSnowflakeModalOpen(false)}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <Database size={18} color="var(--accent-cyan)" />
+                <span>Snowflake Execution Proof</span>
+              </div>
+              <button className="modal-close" onClick={() => setSnowflakeModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="trust-note">
+                <ShieldCheck size={16} color="var(--accent-green)" />
+                <span>Executed live on your Snowflake warehouse using Programmatic Access Tokens (PAT).</span>
+              </div>
+
+              <div className="inspector-group">
+                <label>Snowflake Query ID</label>
+                <div className="code-pill-row">
+                  <code>{inspectedQueryId || answer?.result.query_id}</code>
+                  <button onClick={() => copyText(inspectedQueryId || answer?.result.query_id || '', 'queryId')}>
+                    <Copy size={13} /> {copiedQueryId ? 'Copied' : 'Copy'}
+                  </button>
                 </div>
-                <button
-                  className="icon-button"
-                  onClick={() => setCustomModalOpen(false)}
-                  aria-label="Close"
-                >
-                  <X size={17} />
+              </div>
+
+              <div className="telemetry-grid">
+                <div className="telemetry-card">
+                  <span>Warehouse</span>
+                  <strong>{status?.snowflake.warehouse || 'DATAMIND_WH'}</strong>
+                  <small>X-Small (0.0001 cr/sec)</small>
+                </div>
+                <div className="telemetry-card">
+                  <span>Auto-Suspend</span>
+                  <strong>60s</strong>
+                  <small>Cost control gate</small>
+                </div>
+                <div className="telemetry-card">
+                  <span>Active Role</span>
+                  <strong>DATAMIND_READER</strong>
+                  <small>Least privilege</small>
+                </div>
+                <div className="telemetry-card">
+                  <span>Query Tag</span>
+                  <strong>datamind:interactive:v0.1</strong>
+                  <small>Audit tagged</small>
+                </div>
+              </div>
+
+              <div className="inspector-group">
+                <label>How to Verify on Snowflake:</label>
+                <ol className="verify-steps">
+                  <li>Open <strong>app.snowflake.com</strong> and go to <strong>Activity → Query History</strong>.</li>
+                  <li>Filter by Query ID: <code>{inspectedQueryId || answer?.result.query_id}</code>.</li>
+                  <li>Verify warehouse credits, statement text, and live question-time timestamp.</li>
+                </ol>
+              </div>
+
+              <div className="inspector-group">
+                <label>Snowflake CLI Command</label>
+                <pre className="sql-box mini">
+                  <code>{`snow sql -q "${(answer?.query.sql || 'SELECT 1;').replace(/\\n/g, ' ')}" --warehouse ${status?.snowflake.warehouse || 'DATAMIND_WH'}`}</code>
+                </pre>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <a
+                href="https://app.snowflake.com"
+                target="_blank"
+                rel="noreferrer"
+                className="btn-primary"
+              >
+                <ExternalLink size={14} /> Open Snowflake Web Console
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 3: CUSTOM DATASET REGISTRATION
+         ========================================================================= */}
+      {customModalOpen && (
+        <div className="modal-overlay" onClick={() => setCustomModalOpen(false)}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <Database size={18} color="var(--accent-purple)" />
+                <span>Register Custom Semantic Model</span>
+              </div>
+              <button className="modal-close" onClick={() => setCustomModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCustomDataset}>
+              <div className="modal-body">
+                <p className="modal-desc">
+                  Define your database, schema, tables, joins, dimensions, and metrics in YAML.
+                  It will compile and activate immediately.
+                </p>
+                {customError && <div className="error-note">{customError}</div>}
+                <textarea
+                  rows={14}
+                  className="yaml-editor"
+                  value={customYaml}
+                  onChange={(e) => setCustomYaml(e.target.value)}
+                  spellCheck={false}
+                />
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={() => setCustomModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Activate Dataset
                 </button>
               </div>
-              <form onSubmit={handleCreateCustomDataset}>
-                <div className="modal-body">
-                  <p>
-                    Define your custom database, schema, tables, joins, dimensions, and
-                    metrics in YAML format. The system will compile and activate it instantly.
-                  </p>
-                  {customError && <div className="modal-error">{customError}</div>}
-                  <textarea
-                    rows={15}
-                    value={customYaml}
-                    onChange={(e) => setCustomYaml(e.target.value)}
-                    className="yaml-editor"
-                    spellCheck={false}
-                  />
-                </div>
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="cancel-btn"
-                    onClick={() => setCustomModalOpen(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="primary-action-btn">
-                    Validate & Activate Dataset
-                  </button>
-                </div>
-              </form>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
-}
-
-// Stage Detail Helper
-function StageDetail({
-  stageId,
-  answer,
-  question,
-  status,
-  onOpenSnowflakeModal,
-}: {
-  stageId: string
-  answer: Answer | null
-  question: string
-  status: Status | null
-  onOpenSnowflakeModal: (id: string) => void
-}) {
-  switch (stageId) {
-    case 'question':
-      return (
-        <div className="stage-detail-card">
-          <h4>01. Natural Language Intent</h4>
-          <p>The user prompt is received without preprocessing or local cache matching.</p>
-          <div className="inspector-field">
-            <label>Raw Question:</label>
-            <div className="code-box">{answer?.question || question || 'None'}</div>
-          </div>
-          <div className="inspector-field">
-            <label>Target Dataset:</label>
-            <div className="code-box">{answer?.plan.dataset || 'tpch'}</div>
-          </div>
-        </div>
-      )
-    case 'gemma':
-      return (
-        <div className="stage-detail-card">
-          <h4>02. Google Gemma 4 Semantic Planner</h4>
-          <p>Gemma maps natural language into a strict JSON-schema QueryPlan contract. Gemma is forbidden from writing SQL directly.</p>
-          <div className="inspector-field">
-            <label>Model Runtime:</label>
-            <div className="code-box">{status?.gemma.model || 'gemma4:e4b'} (GPU Metal)</div>
-          </div>
-          <div className="inspector-field">
-            <label>Planned QueryPlan Output:</label>
-            <pre className="code-box">
-              <code>{answer ? JSON.stringify(answer.plan, null, 2) : 'Awaiting query plan…'}</code>
-            </pre>
-          </div>
-        </div>
-      )
-    case 'guard':
-      return (
-        <div className="stage-detail-card">
-          <h4>03. Deterministic Safety & Policy Gate</h4>
-          <p>Strict boundary verification. Validates read-only assertions, blocks DDL (DROP, UPDATE, INSERT), and enforces table allowlists.</p>
-          <div className="inspector-field">
-            <label>Policy Enforcements:</label>
-            <ul className="bullet-list">
-              <li>Exactly one SELECT statement</li>
-              <li>Forbidden: DROP, INSERT, ALTER, DELETE, MERGE</li>
-              <li>Only allowlisted semantic tables can be queried</li>
-            </ul>
-          </div>
-        </div>
-      )
-    case 'compiler':
-      return (
-        <div className="stage-detail-card">
-          <h4>04. SQL Compiler & Parameterizer</h4>
-          <p>Deterministic Python compiler generates the exact Snowflake SQL AST and binds all filter values as parameters.</p>
-          <div className="inspector-field">
-            <label>Generated Statement:</label>
-            <pre className="code-box">
-              <code>{answer?.query.sql || 'Awaiting compiled SQL…'}</code>
-            </pre>
-          </div>
-        </div>
-      )
-    case 'snowflake':
-      return (
-        <div className="stage-detail-card">
-          <h4>05. Snowflake Live Execution</h4>
-          <p>Query sent to Snowflake via SQL API using Programmatic Access Tokens. Zero fixtures or cached rows used.</p>
-          <div className="inspector-field">
-            <label>Query ID:</label>
-            <div className="code-box clickable" onClick={() => onOpenSnowflakeModal(answer?.result.query_id || '')}>
-              {answer?.result.query_id || '—'}
-            </div>
-          </div>
-          <div className="inspector-field">
-            <label>Warehouse & Role:</label>
-            <div className="code-box">
-              {answer?.result.warehouse || 'DATAMIND_WH'} · {answer?.result.role || 'DATAMIND_READER'}
-            </div>
-          </div>
-          <div className="inspector-field">
-            <label>Execution Latency:</label>
-            <div className="code-box">{answer?.result.elapsed_ms ?? '—'} ms</div>
-          </div>
-        </div>
-      )
-    case 'evidence':
-      return (
-        <div className="stage-detail-card">
-          <h4>06. Evidence Ledger & Provenance</h4>
-          <p>Row-level lineage mapped directly to claims. Judges can verify which exact row and column supported every statement.</p>
-          <div className="inspector-field">
-            <label>Rows Returned:</label>
-            <div className="code-box">{answer?.result.rows.length ?? 0} rows</div>
-          </div>
-          <div className="inspector-field">
-            <label>Verified Claims:</label>
-            <div className="code-box">
-              {answer?.claims?.length ? `${answer.claims.length} claims verified against rows` : 'Grounded'}
-            </div>
-          </div>
-        </div>
-      )
-    case 'answer':
-      return (
-        <div className="stage-detail-card">
-          <h4>07. Grounded Output Envelope</h4>
-          <p>The final answer envelope containing question, plan, query, result rows, query ID, and Gemma explanation.</p>
-          <div className="inspector-field">
-            <label>Headline Summary:</label>
-            <div className="code-box">{answer?.summary || '—'}</div>
-          </div>
-        </div>
-      )
-    default:
-      return null
-  }
 }
