@@ -29,9 +29,11 @@ Snowflake performs every calculation. The UI presents the answer and its complet
 ### In progress
 
 - [x] Complete frontend dependency refresh, production build, and narrow-viewport visual QA.
-- [ ] Connect the user's Snowflake account through external-browser authentication.
-- [ ] Pull and benchmark the selected local Gemma variant on the demo machine.
-- [ ] Run real end-to-end questions and retain query IDs as submission evidence.
+- [x] Connected the user's Snowflake account with a local PAT and the official SQL API.
+- [x] Pulled `gemma4:e4b` and verified local GPU inference on the demo machine.
+- [x] Ran a real four-table end-to-end question and retained Snowflake query ID
+      `01c7ce8d-000e-16a4-0000-0002b856b259` as initial submission evidence.
+- [ ] Benchmark warm/cold Gemma latency and tune the demo model/runtime for interactive response time.
 
 ### Next: accuracy and trust moat
 

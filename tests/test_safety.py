@@ -7,6 +7,10 @@ def test_allows_one_select_from_allowlisted_tables() -> None:
     validate_read_only("SELECT COUNT(*) FROM DB.SCHEMA.ORDERS", {"ORDERS"})
 
 
+def test_allows_bound_parameter_markers() -> None:
+    validate_read_only("SELECT COUNT(*) FROM ORDERS WHERE O_ORDERDATE >= %s", {"ORDERS"})
+
+
 @pytest.mark.parametrize(
     "sql",
     [

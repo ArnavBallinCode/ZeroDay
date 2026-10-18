@@ -40,7 +40,8 @@ def doctor() -> int:
         print("  [missing] Set SNOWFLAKE_ACCOUNT and SNOWFLAKE_USER in .env")
         failures.append("Snowflake configuration")
     else:
-        print("  [check] Opening Snowflake browser authentication...")
+        auth_method = "PAT" if settings.active_snowflake_pat else settings.snowflake_authenticator
+        print(f"  [check] Connecting to Snowflake with {auth_method} authentication...")
         try:
             query = QueryCompiler(catalog).compile(QueryPlan(metrics=["order_count"], limit=1))
             result = executor.execute(query)

@@ -67,6 +67,10 @@ cp .env.example .env
 Edit `.env` and set `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_USER`. Leave
 `SNOWFLAKE_AUTHENTICATOR=externalbrowser` to use your normal browser login. Never commit `.env`.
 
+For Google-sign-in accounts where connector SSO is unavailable, set a short-lived `SNOWFLAKE_PAT`
+instead. DataMind automatically uses Snowflake's official SQL API while preserving bound parameters,
+the read-only role, and query-ID evidence. See the setup guide for the network-policy requirement.
+
 Account identifiers normally look like `myorg-myaccount`; copy yours from Snowflake's account menu.
 The complete keyless walkthrough is in [Snowflake setup](docs/SNOWFLAKE_SETUP.md).
 

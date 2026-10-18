@@ -17,3 +17,9 @@ def test_snowflake_is_ready_with_account_identifiers() -> None:
     )
 
     assert settings.snowflake_ready
+
+
+def test_rotated_pat_takes_precedence_during_overlap() -> None:
+    settings = Settings(snowflake_pat="old", snowflake_pat2="new")
+
+    assert settings.active_snowflake_pat == "new"

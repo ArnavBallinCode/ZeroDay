@@ -21,7 +21,8 @@ FORBIDDEN_NODES = (
 
 
 def validate_read_only(sql: str, allowed_tables: set[str]) -> None:
-    statements = sqlglot.parse(sql, read="snowflake")
+    parser_sql = sql.replace("%s", "?")
+    statements = sqlglot.parse(parser_sql, read="snowflake")
     if len(statements) != 1 or not isinstance(statements[0], exp.Select):
         raise UnsafeQuery("Exactly one SELECT statement is allowed")
     statement = statements[0]

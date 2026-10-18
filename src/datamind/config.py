@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     snowflake_user: str = ""
     snowflake_authenticator: str = "externalbrowser"
     snowflake_password: str = ""
+    snowflake_pat: str = ""
+    snowflake_pat2: str = ""
     snowflake_warehouse: str = "DATAMIND_WH"
     snowflake_database: str = "SNOWFLAKE_SAMPLE_DATA"
     snowflake_schema: str = "TPCH_SF1"
@@ -28,3 +30,7 @@ class Settings(BaseSettings):
         return bool(account and user) and not any(
             value.startswith(placeholder_prefixes) for value in (account, user)
         )
+
+    @property
+    def active_snowflake_pat(self) -> str:
+        return self.snowflake_pat2 or self.snowflake_pat

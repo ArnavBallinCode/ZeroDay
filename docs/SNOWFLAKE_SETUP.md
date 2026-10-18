@@ -87,6 +87,15 @@ Open `http://127.0.0.1:5173`.
 
 ## Optional automation authentication
 
-Key-pair, OAuth, programmatic access tokens, or workload identity can be added later for unattended
-CI. They are intentionally out of scope for the interactive hackathon demo because they introduce
-long-lived secret management without improving judging evidence. Never commit such credentials.
+If the account uses Google sign-in and does not expose that session through `externalbrowser`, create
+a short-lived programmatic access token (PAT) in Snowsight. Store it only in `.env`:
+
+```dotenv
+SNOWFLAKE_PAT=the_complete_token_secret
+```
+
+When `SNOWFLAKE_PAT` is set, DataMind uses Snowflake's official SQL API. It keeps the same deterministic
+compiler, bound values, read-only validation, restricted role, timeout, row cap, and query-ID evidence.
+Human-user PATs require a network policy or a temporary network-policy-requirement bypass. Follow
+[Snowflake's PAT guidance](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens), use
+the shortest practical expiry, and rotate or revoke the token after the demo. Never commit it.

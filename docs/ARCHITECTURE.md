@@ -52,3 +52,5 @@ generates the headline deterministically so its names and numbers cannot exceed 
 - Statements time out after 30 seconds.
 - The X-Small warehouse auto-suspends after 60 seconds.
 - Every query receives `QUERY_TAG = datamind:interactive:v0.1` for monitoring.
+- Local Google-sign-in accounts can use a Snowflake PAT through the official SQL API; the token stays
+  in the ignored `.env`, while SQL values remain bound and the read-only role remains enforced.
