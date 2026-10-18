@@ -13,7 +13,6 @@ from datamind.core.catalog import SemanticCatalog
 from datamind.core.compiler import QueryCompiler
 from datamind.core.models import QueryPlan
 
-
 DEFAULT_SMOKE_QUESTION = "Which five customer nations generated the most revenue in 1995?"
 
 
@@ -48,7 +47,7 @@ def doctor() -> int:
             print(f"  [ok] Snowflake returned {result.rows[0][0]:,} orders")
             print(f"       query_id={result.query_id}")
             print(f"       warehouse={result.warehouse} role={result.role}")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - doctor must report connector/auth failures cleanly.
             print(f"  [failed] Snowflake: {exc}")
             failures.append("Snowflake connection/query")
 

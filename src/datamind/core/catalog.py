@@ -28,7 +28,7 @@ class SemanticCatalog:
         self.metrics = self._load_fields("metrics", "metric")
 
     @classmethod
-    def load(cls, path: str | Path) -> "SemanticCatalog":
+    def load(cls, path: str | Path) -> SemanticCatalog:
         with Path(path).open(encoding="utf-8") as handle:
             raw = yaml.safe_load(handle)
         return cls(raw)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import snowflake.connector
@@ -35,12 +35,14 @@ class SnowflakeExecutor:
         if self.settings.snowflake_authenticator == "snowflake":
             connection_args["password"] = self.settings.snowflake_password
 
-        with snowflake.connector.connect(**connection_args) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(query.sql, query.parameters)
-                rows = cursor.fetchmany(self.settings.max_result_rows)
-                columns = [item[0].lower() for item in cursor.description]
-                query_id = cursor.sfqid
+        with (
+            snowflake.connector.connect(**connection_args) as connection,
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(query.sql, query.parameters)
+            rows = cursor.fetchmany(self.settings.max_result_rows)
+            columns = [item[0].lower() for item in cursor.description]
+            query_id = cursor.sfqid
 
         return QueryResult(
             query_id=query_id,
@@ -49,5 +51,5 @@ class SnowflakeExecutor:
             elapsed_ms=round((time.perf_counter() - started) * 1000),
             warehouse=self.settings.snowflake_warehouse,
             role=self.settings.snowflake_role,
-            executed_at=datetime.now(timezone.utc),
+            executed_at=datetime.now(UTC),
         )

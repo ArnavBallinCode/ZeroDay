@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from datamind.core.answer import deterministic_summary
@@ -13,7 +13,7 @@ def result(rows: list[list[object]]) -> QueryResult:
         elapsed_ms=12,
         warehouse="DATAMIND_WH",
         role="DATAMIND_READER",
-        executed_at=datetime.now(timezone.utc),
+        executed_at=datetime.now(UTC),
     )
 
 
