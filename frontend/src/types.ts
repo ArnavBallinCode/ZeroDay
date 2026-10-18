@@ -148,3 +148,22 @@ export type RunHistoryItem = {
   warehouse: string
   answer?: Answer
 }
+
+export type PipelineStep = {
+  id: string
+  name: string
+  detail: string
+  status: 'pending' | 'active' | 'done' | 'error'
+  elapsed_ms?: number
+}
+
+export type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+  answer?: Answer
+  status?: 'pending' | 'completed' | 'error'
+  steps?: PipelineStep[]
+  error?: string
+}
