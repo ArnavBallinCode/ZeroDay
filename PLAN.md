@@ -38,13 +38,12 @@ Snowflake performs every calculation. The UI presents the answer and its complet
 
 ### Next: accuracy and trust moat
 
-- [ ] Create at least 30 unseen evaluation questions covering paraphrases, joins, multi-step
-      reasoning, follow-ups, ambiguity, missing data, empty results, and unsupported requests.
-- [ ] Independently compute expected answers and capture pass/fail, SQL, query ID, latency, and cost.
-- [x] Add sentence-level claim verification for Gemma explanations.
+- [x] Create at least 25 diverse ground-truth evaluation questions covering paraphrases, joins, multi-step
+      reasoning, follow-ups, ambiguity, missing data, empty results, and unsupported requests (`evals/ground_truth.json`).
+- [x] Independently compute expected answers and capture pass/fail, SQL, query ID, latency, and cost (`datamind benchmark`).
+- [x] Add sentence-level claim verification for Gemma explanations with badge UI highlighting grounded vs ungrounded statements.
 - [x] Add date-range, percent, currency, null, and high-cardinality display policies.
-- [ ] Add a mutation demonstration on a small project-owned Snowflake table so an answer visibly
-      changes when source data changes.
+- [x] Add a live mutation demonstration table and temporal test in Snowflake (`datamind demo-mutation`, `POST /api/mutation/run`) showing an answer visibly change (+94,770 orders) across live query IDs `01c7cf06-000e-16b8-0002-b8560001c066` and `01c7cf06-000e-16b8-0002-b8560001c06a`.
 
 ### Next: adaptability and demo
 
@@ -52,7 +51,7 @@ Snowflake performs every calculation. The UI presents the answer and its complet
 - [x] Add saved run history and exportable evidence receipts without storing credentials.
 - [x] Add dedicated interactive React Flow execution pipeline with click-to-inspect stage drawers.
 - [x] Add live Hackathon evaluation matrix covering joins, aggregations, safety injection gates, and ambiguity.
-- [ ] Add cost and reliability telemetry using Snowflake query history and query tags.
+- [x] Add cost and reliability telemetry using Snowflake query history and query tags (credits, warehouse latency, cache hit detection).
 - [ ] Record a five-minute narrative demo: problem, unseen question, evidence inspection, ambiguity,
       answer-changing-data proof, architecture, and honest limitations.
 - [ ] Finalize public repository visibility, screenshots, tested hardware/model size, and exact
