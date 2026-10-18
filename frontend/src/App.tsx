@@ -108,7 +108,7 @@ function DataNode({ data }: NodeProps<Node<{
             <h3>Data</h3>
             <p className="node-subtitle">Semantic Catalog</p>
           </div>
-          <Database size={16} className="node-type-icon teal" />
+          <Database size={16} className="node-type-icon cyan" />
         </div>
 
         <div className="node-data-pill" onClick={data.onSwitchDataset} title="Click to view datasets">
@@ -154,7 +154,7 @@ function QueryNode({ data }: NodeProps<Node<{
             <h3>Query</h3>
             <p className="node-subtitle">Natural Language</p>
           </div>
-          <Search size={16} className="node-type-icon purple" />
+          <Search size={16} className="node-type-icon violet" />
         </div>
 
         <input
@@ -222,7 +222,7 @@ function PlannerNode({ data }: NodeProps<Node<{
             <h3>Planner</h3>
             <p className="node-subtitle">Google Gemma 4 E4B</p>
           </div>
-          <Bot size={16} className="node-type-icon purple" />
+          <Bot size={16} className="node-type-icon violet" />
         </div>
 
         <div className="node-status-pill">
@@ -265,7 +265,7 @@ function SafetyNode({ data }: NodeProps<Node<{
             <h3>Guardrails</h3>
             <p className="node-subtitle">Deterministic Policy</p>
           </div>
-          <Shield size={16} className="node-type-icon green" />
+          <Shield size={16} className="node-type-icon emerald" />
         </div>
 
         <div className="node-status-pill">
@@ -1150,16 +1150,16 @@ metrics:
            ------------------------------------------------------------------------- */}
         {activeTab === 'pipeline' && (
           <div className="pipeline-page">
-            <div className="pipeline-progress-bar-container">
-              <div className="progress-topline">
-                <div className="progress-title">
-                  <Play size={13} className="teal" />
+            <div className="pipeline-stepper-container">
+              <div className="stepper-header-row">
+                <div className="stepper-title-group">
+                  <Play size={13} className="cyan" />
                   <strong>ZeroDay DataMind Pipeline</strong>
-                  <span className="progress-phase-tag">
+                  <span className={`stepper-badge ${executionStatus === 'querying' ? 'running' : ''}`}>
                     {executionStatus === 'querying' ? 'Computing Question-Time Answer...' : 'Ready'}
                   </span>
                 </div>
-                <div className="progress-meta">
+                <div className="stepper-meta-group">
                   <span><Clock size={12} /> {executionStatus === 'querying' ? `${(elapsedTimer / 1000).toFixed(1)}s` : `${answer?.result.elapsed_ms ?? 0}ms`}</span>
                   <span><Database size={12} /> {status?.snowflake.warehouse || 'DATAMIND_WH'}</span>
                 </div>
