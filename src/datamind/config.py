@@ -22,6 +22,9 @@ class Settings(BaseSettings):
 
     @property
     def snowflake_ready(self) -> bool:
-        placeholders = {"organization-account", "your_username"}
-        values = {self.snowflake_account.strip().lower(), self.snowflake_user.strip().lower()}
-        return all(values) and not bool(values & placeholders)
+        account = self.snowflake_account.strip().lower()
+        user = self.snowflake_user.strip().lower()
+        placeholder_prefixes = ("your_", "organization-")
+        return bool(account and user) and not any(
+            value.startswith(placeholder_prefixes) for value in (account, user)
+        )

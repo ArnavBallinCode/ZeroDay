@@ -3,7 +3,7 @@ from datamind.config import Settings
 
 def test_snowflake_is_not_ready_with_template_values() -> None:
     settings = Settings(
-        snowflake_account="organization-account",
+        snowflake_account="your_org-your_account",
         snowflake_user="your_username",
     )
 
