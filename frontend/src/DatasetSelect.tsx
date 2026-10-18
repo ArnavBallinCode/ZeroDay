@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import {
   Check,
+  ChevronDown,
   ChevronsUpDown,
   Database,
   Layers3,
@@ -33,108 +34,128 @@ export function DatasetSelect({
 
   const activeDataset = datasets.find((d) => d.id === activeDatasetId) || datasets[0]
 
-  // Close on outside click
+  // Close header dropdown on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false)
       }
     }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setIsOpen(false)
-      }
-    }
-    if (isOpen) {
+    if (isOpen && variant === 'header') {
       document.addEventListener('mousedown', handleClickOutside)
-      document.addEventListener('keydown', handleKeyDown)
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isOpen])
+  }, [isOpen, variant])
 
-  // Collapsed rail mode view
+  // Helper to format clean dataset names
+  const getCleanName = (d: DatasetMeta | undefined) => {
+    if (!d) return 'TPC-H SF1'
+    if (d.id === 'tpch') return 'TPC-H SF1'
+    if (d.id === 'tpch_sf10') return 'TPC-H SF10'
+    if (d.id === 'ecommerce') return 'E-Commerce'
+    return d.name.toUpperCase()
+  }
+
+  const getCleanScale = (d: DatasetMeta | undefined) => {
+    if (!d) return '1.5M rows'
+    if (d.id === 'tpch') return '1.5M rows'
+    if (d.id === 'tpch_sf10') return '15M rows'
+    if (d.id === 'ecommerce') return 'Retail store'
+    return `${d.table_count} tables`
+  }
+
+  // 1. COMPACT RAIL MODE VIEW (58px sidebar)
   if (isCollapsed && variant === 'sidebar') {
     return (
-      <div className="shadcn-dataset-collapsed" ref={containerRef}>
+      <div className="dataset-rail-view">
         <button
           type="button"
-          className="shadcn-dataset-icon-trigger"
-          onClick={() => setIsOpen(!isOpen)}
-          title={`Active Dataset: ${activeDataset?.name || 'TPC-H'} (Click to change)`}
-          aria-expanded={isOpen}
+          className="dataset-rail-btn"
+          onClick={onOpenModels}
+          title={`Active Dataset: ${getCleanName(activeDataset)} (${activeDataset?.table_count ?? 8} tables)`}
+          aria-label="Switch Semantic Model"
         >
           <Database size={16} color="var(--accent-primary)" />
-          <span className="dataset-dot-indicator" />
+          <span className="dataset-active-dot" />
+        </button>
+      </div>
+    )
+  }
+
+  // 2. HEADER BAR DROPDOWN VIEW
+  if (variant === 'header') {
+    return (
+      <div className="header-dataset-wrapper" ref={containerRef}>
+        <button
+          type="button"
+          className={`header-dataset-btn ${isOpen ? 'active' : ''}`}
+          onClick={() => setIsOpen(!isOpen)}
+          aria-expanded={isOpen}
+          title="Switch active Snowflake semantic model"
+        >
+          <Database size={13} color="var(--accent-primary)" />
+          <span className="header-ds-label">{getCleanName(activeDataset)}</span>
+          <span className="header-ds-pill">{getCleanScale(activeDataset)}</span>
+          <ChevronDown size={12} className={`header-ds-arrow ${isOpen ? 'rotated' : ''}`} />
         </button>
 
         {isOpen && (
-          <div className="shadcn-dropdown-popover floating-rail-popover">
-            <div className="dropdown-popover-header">
-              <div className="header-title-row">
-                <Layers3 size={13} color="var(--accent-emerald)" />
-                <span>SELECT SEMANTIC MODEL</span>
-              </div>
-              <span className="header-subtitle">Snowflake allowlisted catalog</span>
+          <div className="header-dropdown-menu">
+            <div className="header-menu-top">
+              <Sparkles size={12} color="var(--accent-emerald)" />
+              <span>Active Snowflake Model</span>
             </div>
-
-            <div className="dropdown-items-list">
+            <div className="header-menu-list">
               {datasets.map((d) => {
                 const isSelected = d.id === activeDatasetId
                 return (
                   <button
                     key={d.id}
                     type="button"
-                    className={`shadcn-dropdown-item ${isSelected ? 'selected' : ''}`}
+                    className={`header-menu-item ${isSelected ? 'selected' : ''}`}
                     onClick={() => {
                       onSelect(d.id)
                       setIsOpen(false)
                     }}
                   >
-                    <div className="item-check">
-                      {isSelected ? <Check size={14} color="var(--accent-emerald)" /> : <span className="check-placeholder" />}
+                    <div className="menu-item-check">
+                      {isSelected ? <Check size={13} color="var(--accent-emerald)" /> : <span className="menu-empty-dot" />}
                     </div>
-                    <div className="item-body">
-                      <div className="item-title-row">
-                        <span className="item-name">{d.name}</span>
-                        {isSelected && <span className="active-tag">Active</span>}
+                    <div className="menu-item-info">
+                      <div className="menu-item-title-row">
+                        <span className="menu-item-name">{getCleanName(d)}</span>
+                        <span className="menu-item-scale">{getCleanScale(d)}</span>
                       </div>
-                      <span className="item-desc">{d.description}</span>
-                      <div className="item-pills">
-                        <span className="mini-pill">{d.table_count} tables</span>
-                        <span className="mini-pill">{d.dimension_count} dims</span>
-                        <span className="mini-pill db-pill">{d.schema}</span>
-                      </div>
+                      <span className="menu-item-db">{d.schema} · {d.table_count} tables</span>
                     </div>
                   </button>
                 )
               })}
             </div>
-
-            <div className="dropdown-popover-footer">
+            <div className="header-menu-bottom">
               <button
                 type="button"
-                className="dropdown-footer-action"
+                className="header-menu-action"
                 onClick={() => {
                   setIsOpen(false)
                   onOpenNew()
                 }}
               >
-                <Plus size={13} />
-                <span>Add Custom Semantic Model…</span>
+                <Plus size={12} />
+                <span>+ Custom Model</span>
               </button>
               {onOpenModels && (
                 <button
                   type="button"
-                  className="dropdown-footer-link"
+                  className="header-menu-action link"
                   onClick={() => {
                     setIsOpen(false)
                     onOpenModels()
                   }}
                 >
-                  Manage in Models tab →
+                  Catalog →
                 </button>
               )}
             </div>
@@ -144,69 +165,69 @@ export function DatasetSelect({
     )
   }
 
-  // Expanded sidebar or Header bar trigger
+  // 3. SIDEBAR VIEW: Seamless inline collapsible card (NEVER overflows or clips!)
   return (
-    <div className={`shadcn-dataset-container ${variant}`} ref={containerRef}>
+    <div className="sidebar-dataset-box" ref={containerRef}>
+      {/* Active Selection Trigger Card */}
       <button
         type="button"
-        className={`shadcn-dataset-trigger ${isOpen ? 'active-open' : ''} ${variant}`}
+        className={`dataset-card-trigger ${isOpen ? 'expanded' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
       >
-        <div className="trigger-left">
-          <div className="dataset-badge-icon">
+        <div className="ds-trigger-left">
+          <div className="ds-icon-box">
             <Database size={14} color="var(--accent-primary)" />
           </div>
-          <div className="trigger-text-col">
-            <div className="trigger-title-row">
-              <span className="trigger-dataset-name">{activeDataset?.name || 'Dataset'}</span>
-              <span className="trigger-count-badge">{activeDataset?.table_count ?? 8} tables</span>
+          <div className="ds-text-col">
+            <div className="ds-name-row">
+              <span className="ds-name">{getCleanName(activeDataset)}</span>
+              <span className="ds-badge">{getCleanScale(activeDataset)}</span>
             </div>
-            <span className="trigger-subtext">
-              {activeDataset?.database ? `${activeDataset.database}.${activeDataset.schema}` : 'Snowflake Engine'}
-            </span>
+            <span className="ds-sub">{activeDataset?.schema || 'TPCH_SF1'} · {activeDataset?.table_count ?? 8} tables</span>
           </div>
         </div>
-        <ChevronsUpDown size={14} className="trigger-chevron" />
+        <div className="ds-trigger-right">
+          <ChevronsUpDown size={13} className={`ds-chevron ${isOpen ? 'open' : ''}`} />
+        </div>
       </button>
 
+      {/* Inline Selection Drawer (seamless, in-flow, never clipped by overflow) */}
       {isOpen && (
-        <div className="shadcn-dropdown-popover">
-          <div className="dropdown-popover-header">
-            <div className="header-title-row">
-              <Sparkles size={13} color="var(--accent-emerald)" />
-              <span>SELECT SEMANTIC MODEL</span>
-            </div>
-            <span className="header-subtitle">Bound to Snowflake warehouse execution</span>
+        <div className="dataset-inline-drawer">
+          <div className="drawer-header">
+            <span>SWITCH MODEL</span>
+            <span className="drawer-count">{datasets.length} available</span>
           </div>
 
-          <div className="dropdown-items-list">
+          <div className="drawer-items">
             {datasets.map((d) => {
               const isSelected = d.id === activeDatasetId
               return (
                 <button
                   key={d.id}
                   type="button"
-                  className={`shadcn-dropdown-item ${isSelected ? 'selected' : ''}`}
+                  className={`drawer-item ${isSelected ? 'active' : ''}`}
                   onClick={() => {
                     onSelect(d.id)
                     setIsOpen(false)
                   }}
                 >
-                  <div className="item-check">
-                    {isSelected ? <Check size={14} color="var(--accent-emerald)" /> : <span className="check-placeholder" />}
+                  <div className="drawer-item-check">
+                    {isSelected ? <Check size={13} color="var(--accent-emerald)" /> : <span className="drawer-empty-dot" />}
                   </div>
-                  <div className="item-body">
-                    <div className="item-title-row">
-                      <span className="item-name">{d.name}</span>
-                      {isSelected && <span className="active-tag">Active</span>}
+                  <div className="drawer-item-body">
+                    <div className="drawer-item-title-row">
+                      <span className="drawer-item-name">{getCleanName(d)}</span>
+                      {isSelected && <span className="drawer-active-tag">Active</span>}
                     </div>
-                    <span className="item-desc">{d.description}</span>
-                    <div className="item-pills">
-                      <span className="mini-pill">{d.table_count} tables</span>
-                      <span className="mini-pill">{d.dimension_count} dims</span>
-                      <span className="mini-pill">{d.metric_count} metrics</span>
-                      <span className="mini-pill db-pill">{d.schema}</span>
+                    <span className="drawer-item-desc">{d.description}</span>
+                    <div className="drawer-item-meta">
+                      <span>{getCleanScale(d)}</span>
+                      <span>·</span>
+                      <span>{d.table_count} tables</span>
+                      <span>·</span>
+                      <span>{d.schema}</span>
                     </div>
                   </div>
                 </button>
@@ -214,28 +235,28 @@ export function DatasetSelect({
             })}
           </div>
 
-          <div className="dropdown-popover-footer">
+          <div className="drawer-footer">
             <button
               type="button"
-              className="dropdown-footer-action"
+              className="drawer-action-btn"
               onClick={() => {
                 setIsOpen(false)
                 onOpenNew()
               }}
             >
-              <Plus size={13} />
-              <span>Add Custom Semantic Model…</span>
+              <Plus size={12} />
+              <span>Add Custom Model…</span>
             </button>
             {onOpenModels && (
               <button
                 type="button"
-                className="dropdown-footer-link"
+                className="drawer-link-btn"
                 onClick={() => {
                   setIsOpen(false)
                   onOpenModels()
                 }}
               >
-                Manage in Models tab →
+                Manage in Catalog →
               </button>
             )}
           </div>
