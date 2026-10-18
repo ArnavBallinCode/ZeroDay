@@ -17,10 +17,18 @@ joins:
   - {from: CUSTOMER, to: NATION, "on": "CUSTOMER.C_NATIONKEY = NATION.N_NATIONKEY"}
 
 dimensions:
+  customer_name:
+    table: CUSTOMER
+    expression: CUSTOMER.C_NAME
+    description: Registered shopper or buyer account name
   order_date:
     table: ORDERS
     expression: ORDERS.O_ORDERDATE
     description: Transaction timestamp or date
+  order_year:
+    table: ORDERS
+    expression: DATE_PART('YEAR', ORDERS.O_ORDERDATE)
+    description: Calendar year of transaction
   customer_segment:
     table: CUSTOMER
     expression: CUSTOMER.C_MKTSEGMENT
@@ -43,10 +51,18 @@ metrics:
     table: LINEITEM
     expression: SUM(LINEITEM.L_EXTENDEDPRICE * (1 - LINEITEM.L_DISCOUNT))
     description: Total revenue after coupon discounts
+  revenue:
+    table: LINEITEM
+    expression: SUM(LINEITEM.L_EXTENDEDPRICE * (1 - LINEITEM.L_DISCOUNT))
+    description: Total sales revenue
   order_volume:
     table: ORDERS
     expression: COUNT(DISTINCT ORDERS.O_ORDERKEY)
     description: Total completed orders count
+  order_count:
+    table: ORDERS
+    expression: COUNT(DISTINCT ORDERS.O_ORDERKEY)
+    description: Total order transactions count
   unique_shoppers:
     table: CUSTOMER
     expression: COUNT(DISTINCT CUSTOMER.C_CUSTKEY)
@@ -55,6 +71,10 @@ metrics:
     table: ORDERS
     expression: AVG(ORDERS.O_TOTALPRICE)
     description: Average cart checkout value
+  account_balance:
+    table: CUSTOMER
+    expression: SUM(CUSTOMER.C_ACCTBAL)
+    description: Total buyer account balance
 
 examples:
   - question: What was our gross sales by buyer country?

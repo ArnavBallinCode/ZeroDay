@@ -411,6 +411,31 @@ class DataMindAgent:
                 f"active semantic model {self.catalog.name!r}."
             )
 
+        # Field alias reconciliation across compatible models (e.g. ecommerce vs tpch)
+        field_aliases = {
+            'order_volume': 'order_count',
+            'order_count': 'order_volume',
+            'gross_sales': 'revenue',
+            'revenue': 'gross_sales',
+            'buyer_country': 'nation_name',
+            'nation_name': 'buyer_country',
+        }
+        plan.dimensions = [
+            field_aliases.get(d, d) if d not in self.catalog.dimensions and field_aliases.get(d) in self.catalog.dimensions else d
+            for d in plan.dimensions
+        ]
+        plan.metrics = [
+            field_aliases.get(m, m) if m not in self.catalog.metrics and field_aliases.get(m) in self.catalog.metrics else m
+            for m in plan.metrics
+        ]
+        all_fields = set(self.catalog.dimensions) | set(self.catalog.metrics)
+        for s in plan.sort:
+            if s.field not in all_fields and field_aliases.get(s.field) in all_fields:
+                s.field = field_aliases[s.field]
+        for f in plan.filters:
+            if f.field not in all_fields and field_aliases.get(f.field) in all_fields:
+                f.field = field_aliases[f.field]
+
     def _reconcile_explicit_intent(self, question: str, plan: QueryPlan) -> None:
         """Correct explicit catalog mappings without replacing Gemma's semantic role."""
         q_lower = question.lower()
@@ -438,15 +463,19 @@ class DataMindAgent:
             re.search(r'\b(?:who|which)\s+(?:is|are|was|were)\s+(?:the\s+)?(?:best|worst)\b', q_lower)
             and not any(m in q_lower for m in ('revenue', 'sales', 'turnover', 'spend', 'order', 'orders', 'balance', 'cost', 'supplier', 'suppliers', 'nation', 'nations'))
         ):
+            rev_name = 'revenue' if 'revenue' in self.catalog.metrics else ('gross_sales' if 'gross_sales' in self.catalog.metrics else next(iter(self.catalog.metrics)))
+            ord_name = 'order_count' if 'order_count' in self.catalog.metrics else ('order_volume' if 'order_volume' in self.catalog.metrics else rev_name)
             plan.clarification = (
                 "The term 'best customer' is ambiguous without specifying a metric. Did you mean customers "
-                "with the highest total revenue, the most orders placed, or the highest account balance?"
+                f"with the highest {rev_name.replace('_', ' ')}, the most {ord_name.replace('_', ' ')}, or account balance?"
             )
-            plan.suggested_questions = [
-                'Top 10 customers by revenue overall',
-                'Top 10 customers by order count',
-                'Top 10 customers by account balance',
+            suggested = [
+                f'Top 10 customers by {rev_name.replace("_", " ")}',
+                f'Top 10 customers by {ord_name.replace("_", " ")}',
             ]
+            if 'account_balance' in self.catalog.metrics:
+                suggested.append('Top 10 customers by account balance')
+            plan.suggested_questions = suggested
             return
 
         supplier_balance = (
