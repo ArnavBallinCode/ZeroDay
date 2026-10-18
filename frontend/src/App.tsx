@@ -37,7 +37,10 @@ import {
   Loader2,
   Lock,
   Maximize2,
+  Menu,
   MessageCircle,
+  PanelLeft,
+  PanelLeftClose,
   Play,
   Plus,
   RefreshCw,
@@ -84,6 +87,7 @@ import {
   SnowflakeExplainResult,
   Status,
 } from './types'
+import { DatasetSelect } from './DatasetSelect'
 import ReactMarkdown from 'react-markdown'
 
 // ============================================================================
@@ -735,6 +739,28 @@ export default function App() {
   const [datasets, setDatasets] = useState<DatasetMeta[]>([])
   const [activeDatasetId, setActiveDatasetId] = useState<string>('tpch')
   const [semanticModel, setSemanticModel] = useState<SemanticModelFull | null>(null)
+
+  // Sidebar state (Pin toggle + Hover expansion)
+  const [sidebarPinned, setSidebarPinned] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('datamind_sidebar_pinned') !== 'false'
+    } catch {
+      return true
+    }
+  })
+  const [sidebarHovered, setSidebarHovered] = useState<boolean>(false)
+
+  const toggleSidebarPin = () => {
+    setSidebarPinned((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('datamind_sidebar_pinned', String(next))
+      } catch {}
+      return next
+    })
+  }
+
+  const isExpanded = sidebarPinned || sidebarHovered
 
   // Query and execution state
   const [queryText, setQueryText] = useState('Which five customer nations generated the most revenue in 1995?')
@@ -1424,14 +1450,34 @@ metrics:
 
   return (
     <div className="app-layout">
-      {/* SIDEBAR */}
-      <aside className="sidebar">
+      {/* SIDEBAR RAIL PLACEHOLDER (when unpinned, holds the slim 62px column) */}
+      {!sidebarPinned && <div className="sidebar-rail-placeholder" />}
+
+      {/* SIDEBAR (Collapsible, Hover-Expandable, with Pin Toggle) */}
+      <aside
+        className={`sidebar ${!sidebarPinned ? 'collapsed' : ''} ${!sidebarPinned && sidebarHovered ? 'hover-expanded' : ''}`}
+        onMouseEnter={() => {
+          if (!sidebarPinned) setSidebarHovered(true)
+        }}
+        onMouseLeave={() => {
+          if (!sidebarPinned) setSidebarHovered(false)
+        }}
+      >
         <div className="sidebar-header">
           <div className="sidebar-logo">
             <Shield size={20} color="var(--accent-emerald)" />
-            <span>DataMind</span>
+            <span className="sidebar-logo-text">DataMind</span>
             <span className="logo-badge">Verified</span>
           </div>
+          <button
+            type="button"
+            className="sidebar-pin-btn"
+            onClick={toggleSidebarPin}
+            title={sidebarPinned ? "Switch to hover-expand rail mode" : "Pin sidebar open"}
+            aria-label="Toggle pin sidebar"
+          >
+            {sidebarPinned ? <PanelLeftClose size={15} /> : <PanelLeft size={15} />}
+          </button>
         </div>
 
         <div className="sidebar-nav">
@@ -1440,6 +1486,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'pipeline' ? 'active' : ''}`}
               onClick={() => setActiveTab('pipeline')}
+              title="Pipeline Workbench"
             >
               <LayoutDashboard size={16} />
               <span>Pipeline</span>
@@ -1448,6 +1495,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
               onClick={() => setActiveTab('chat')}
+              title="Conversational Analytics"
             >
               <MessageCircle size={16} />
               <span>Chat</span>
@@ -1456,6 +1504,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'studio' ? 'active' : ''}`}
               onClick={() => setActiveTab('studio')}
+              title="Snowflake SQL Studio & EXPLAIN"
             >
               <Terminal size={16} />
               <span>Snowflake Studio</span>
@@ -1464,6 +1513,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'receipts' ? 'active' : ''}`}
               onClick={() => setActiveTab('receipts')}
+              title="Decision Receipts"
             >
               <Clock size={16} />
               <span>Decision Receipts</span>
@@ -1472,6 +1522,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'models' ? 'active' : ''}`}
               onClick={() => setActiveTab('models')}
+              title="Semantic Catalog"
             >
               <Layers3 size={16} />
               <span>Semantic Model</span>
@@ -1480,6 +1531,7 @@ metrics:
             <a
               className={`nav-item ${activeTab === 'evals' ? 'active' : ''}`}
               onClick={() => setActiveTab('evals')}
+              title="Rubric Benchmarks"
             >
               <ShieldCheck size={16} />
               <span>Rubric Evals</span>
@@ -1489,19 +1541,15 @@ metrics:
 
           <div className="nav-section" style={{ marginTop: 18 }}>
             <span className="nav-section-title">Active Dataset</span>
-            <div className="sidebar-dataset-select">
-              <select
-                value={activeDatasetId}
-                onChange={(e) => handleDatasetSelect(e.target.value)}
-              >
-                {datasets.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name.toUpperCase()} ({d.table_count} tables)
-                  </option>
-                ))}
-                <option value="new">+ Add Custom Dataset…</option>
-              </select>
-            </div>
+            <DatasetSelect
+              datasets={datasets}
+              activeDatasetId={activeDatasetId}
+              onSelect={handleDatasetSelect}
+              onOpenNew={() => setCustomModalOpen(true)}
+              onOpenModels={() => setActiveTab('models')}
+              isCollapsed={!isExpanded}
+              variant="sidebar"
+            />
           </div>
         </div>
 
@@ -1511,6 +1559,7 @@ metrics:
             className="node-action-btn"
             style={{ marginBottom: 10, fontSize: '0.75rem', padding: '6px 10px' }}
             onClick={() => setSettingsModalOpen(true)}
+            title="Configure Engine Settings"
           >
             <Sliders size={13} color="var(--accent-primary)" />
             <span>Engine Settings</span>
@@ -1532,6 +1581,15 @@ metrics:
       <div className="main-content">
         <header className="app-header">
           <div className="breadcrumb">
+            <button
+              type="button"
+              className={`hamburger-toggle-btn ${sidebarPinned ? 'pinned' : ''}`}
+              onClick={toggleSidebarPin}
+              title={sidebarPinned ? "Collapse sidebar (expand on hover)" : "Pin sidebar open"}
+              aria-label="Toggle Sidebar"
+            >
+              {sidebarPinned ? <PanelLeftClose size={17} /> : <Menu size={17} />}
+            </button>
             <span className="breadcrumb-item" onClick={() => setActiveTab('pipeline')}>DataMind</span>
             <ChevronRight size={13} />
             <span className="breadcrumb-current">
@@ -1545,6 +1603,18 @@ metrics:
           </div>
 
           <div className="header-actions">
+            {/* Top header active dataset switcher */}
+            <div className="header-dataset-quickselect" style={{ marginRight: 6 }}>
+              <DatasetSelect
+                datasets={datasets}
+                activeDatasetId={activeDatasetId}
+                onSelect={handleDatasetSelect}
+                onOpenNew={() => setCustomModalOpen(true)}
+                onOpenModels={() => setActiveTab('models')}
+                variant="header"
+              />
+            </div>
+
             <button
               className="btn-secondary"
               style={{ fontSize: '0.74rem', padding: '5px 10px' }}
