@@ -212,7 +212,7 @@ export type RunHistoryItem = {
   id: string
   timestamp: string
   question: string
-  status: 'verified' | 'clarification' | 'blocked'
+  status: 'verified' | 'clarification' | 'blocked' | 'error'
   dataset: string
   query_id: string
   elapsed_ms: number
@@ -235,9 +235,10 @@ export type ChatMessage = {
   content: string
   timestamp: string
   answer?: Answer
-  status?: 'pending' | 'completed' | 'error'
+  status?: 'pending' | 'completed' | 'error' | 'clarification' | 'blocked'
   steps?: PipelineStep[]
   error?: string
+  clarificationOptions?: string[]
 }
 
 export type EngineSettings = {

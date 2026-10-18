@@ -532,9 +532,22 @@ def ask(payload: AskRequest) -> AnswerEnvelope:
     try:
         return agent.ask(payload.question, payload.context, payload.previous_plan)
     except NeedsClarification as exc:
-        raise HTTPException(422, {"type": "clarification", "question": str(exc)}) from exc
+        raise HTTPException(
+            422,
+            {
+                "type": "clarification",
+                "question": exc.message,
+                "options": exc.suggested_questions,
+            },
+        ) from exc
     except UnsafeQuery as exc:
-        raise HTTPException(400, f"Query blocked by safety policy: {exc}") from exc
+        raise HTTPException(
+            400,
+            {
+                "type": "blocked",
+                "message": f"Query blocked by safety policy: {exc}",
+            },
+        ) from exc
     except (InvalidPlan, GemmaUnavailable) as exc:
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:

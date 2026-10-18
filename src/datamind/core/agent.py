@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import re
 import time
 
 from datamind.adapters.gemma import GemmaPlanner
 from datamind.adapters.snowflake import SnowflakeExecutor
 from datamind.core.answer import deterministic_summary, verify_sentence_grounding
 from datamind.core.catalog import SemanticCatalog
-from datamind.core.compiler import QueryCompiler
-from datamind.core.models import AnswerEnvelope, ExecutionStageTrace, QueryPlan
+from datamind.core.compiler import InvalidPlan, QueryCompiler
+from datamind.core.models import AnswerEnvelope, ExecutionStageTrace, Filter, QueryPlan, Sort
 
 
 class NeedsClarification(ValueError):
-    pass
+    def __init__(self, message: str, suggested_questions: list[str] | None = None):
+        super().__init__(message)
+        self.message = message
+        self.suggested_questions = suggested_questions or []
 
 
 class DataMindAgent:
@@ -40,17 +44,75 @@ class DataMindAgent:
         # =====================================================================
         t0 = time.perf_counter()
         prompt_schema = self.catalog.prompt_schema()
+        # Resolve relative dates against live data, not an invented model cutoff.
+        relative = re.search(r'\b(?:last|past|latest)\s+(\d+|one|two|three|four|five)\s+years?\b', question.lower())
+        if re.search(r'\b(?:rolling|calendar|today|current|19\d{2}|20\d{2})\b', question.lower()):
+            relative = None  # Explicit user dates take precedence over dataset-relative defaults.
+        year_range = None
+        if relative and 'order_year' in self.catalog.dimensions:
+            words = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5}
+            count = words.get(relative[1]) or int(relative[1])
+            if not 1 <= count <= 100:
+                raise NeedsClarification('Please choose a year range between 1 and 100 years.')
+            coverage_query = self.compiler.compile(QueryPlan(
+                dataset=self.catalog.name, dimensions=['order_year'], metrics=['order_count'],
+                sort=[Sort(field='order_year', direction='desc')], limit=1))
+            coverage = self.executor.execute(coverage_query)
+            if coverage.rows:
+                end_year = int(coverage.rows[0][0])
+                year_range = [end_year - count + 1, end_year]
+                prompt_schema['resolved_time_period'] = {
+                    'order_year_between': year_range,
+                    'interpretation': 'Latest calendar years available in the dataset; final year may be partial',
+                }
+                stages.append(ExecutionStageTrace(
+                    stage_number=0, id='live_date_coverage', title='Live dataset date coverage',
+                    component='Snowflake', description='Find latest available order year before resolving relative dates.',
+                    output_payload={'query': coverage_query.model_dump(), 'result': coverage.model_dump(mode='json')},
+                    explanation=f'Resolved latest {count} available years as {year_range[0]}–{year_range[1]}.'))
         plan = self.planner.plan(question, prompt_schema, context, previous_plan)
+        if year_range:
+            plan.filters = [f for f in plan.filters if f.field not in ('order_year', 'order_date', 'order_month')]
+            plan.filters.append(Filter(field='order_year', operator='between', value=year_range))
+            plan.assumptions.append(f"Interpreted '{relative[0]}' as latest available dataset years {year_range[0]}–{year_range[1]}, not today's calendar years; the final year may be partial.")
+        # A bare ordinal follow-up refers to the previous ranking, not a new entity.
+        if previous_plan and re.fullmatch(r'[\s?.,]*(?:who (?:is|are|was|were) (?:the )?|show (?:me )?(?:the )?)?(?:first|1st) (?:and|&) (?:second|2nd)[\s?.,]*', question.lower()):
+            plan = previous_plan.model_copy(deep=True)
+            plan.limit = 2
+            plan.clarification = None
+            plan.assumptions.append('First and second refer to the previous ranking; rerun against Snowflake.')
+        if not plan.clarification:
+            try:
+                self.compiler.compile(plan)
+            except InvalidPlan as exc:
+                # One bounded model repair; invalid plans never reach Snowflake.
+                repair_schema = {**prompt_schema, 'validation_error': str(exc),
+                                 'rejected_plan': plan.model_dump()}
+                plan = self.planner.plan(question, repair_schema, context, previous_plan)
         t1 = time.perf_counter()
         stage1_ms = max(1, int((t1 - t0) * 1000))
 
         if plan.clarification:
+            suggested = list(plan.suggested_questions)
+            q_lower = question.lower()
+            if not suggested:
+                if any(w in q_lower for w in ("who", "customer", "nation", "turnover", "revenue")):
+                    suggested.append("Which five customer nations generated the most revenue in 1995?")
+                    suggested.append("Top 10 customers by revenue overall")
+                if any(w in q_lower for w in ("year", "last", "date", "recent")):
+                    suggested.append("Which customer nations generated the most revenue between 1995 and 1998?")
+                if any(w in q_lower for w in ("order", "segment", "market")):
+                    suggested.append("How many orders did each market segment place?")
+                if not suggested:
+                    suggested.append("Which five customer nations generated the most revenue in 1995?")
+                    suggested.append("How many orders did each market segment place?")
+
             stages.append(
                 ExecutionStageTrace(
                     stage_number=1,
                     id="stage_1_planner",
                     title="Google Gemma Semantic Planner (Local LLM)",
-                    component=f"Google Gemma 4 ({self.planner.model} via Ollama)",
+                    component=f"Google Gemma ({self.planner.model} via Ollama)",
                     description="Analyzes natural language prompt, maps user intent to semantic catalog entities, or raises ambiguity clarification.",
                     status="clarification",
                     elapsed_ms=stage1_ms,
@@ -59,11 +121,11 @@ class DataMindAgent:
                         "context": context or [],
                         "catalog_name": self.catalog.name,
                     },
-                    output_payload={"clarification": plan.clarification},
+                    output_payload={"clarification": plan.clarification, "suggested_questions": suggested},
                     explanation=f"Gemma detected ambiguity in question ('{question}'). Instead of guessing or hallucinating SQL, it requested clarification: '{plan.clarification}'.",
                 )
             )
-            raise NeedsClarification(plan.clarification)
+            raise NeedsClarification(plan.clarification, suggested)
 
         dim_str = ", ".join(plan.dimensions) if plan.dimensions else "None"
         met_str = ", ".join(plan.metrics) if plan.metrics else "None"
@@ -78,7 +140,7 @@ class DataMindAgent:
                 stage_number=1,
                 id="stage_1_planner",
                 title="Google Gemma Semantic Planner (Local LLM)",
-                component=f"Google Gemma 4 ({self.planner.model} via Ollama)",
+                component=f"Google Gemma ({self.planner.model} via Ollama)",
                 description="Translates everyday language into a constrained semantic plan using the active catalog schema.",
                 status="passed",
                 elapsed_ms=stage1_ms,
@@ -100,16 +162,6 @@ class DataMindAgent:
         # =====================================================================
         t_stage2_start = time.perf_counter()
         filter_inheritance_applied = False
-        if previous_plan:
-            if not plan.metrics and previous_plan.metrics:
-                plan.metrics = previous_plan.metrics
-                filter_inheritance_applied = True
-            if not plan.dimensions and previous_plan.dimensions and not plan.filters:
-                plan.dimensions = previous_plan.dimensions
-                filter_inheritance_applied = True
-            if not plan.sort and previous_plan.sort:
-                plan.sort = previous_plan.sort
-                filter_inheritance_applied = True
 
         stage2_ms = max(1, int((time.perf_counter() - t_stage2_start) * 1000))
         stages.append(
@@ -244,6 +296,8 @@ class DataMindAgent:
         # =====================================================================
         t_ev_start = time.perf_counter()
         summary, claims = deterministic_summary(plan, result)
+        if year_range:
+            summary += f' Period: {year_range[0]}–{year_range[1]} (latest available dataset years; final year may be partial).'
         explanation = self.planner.explain(question, plan, result.columns, result.rows)
         sentence_grounding = verify_sentence_grounding(explanation, plan, result)
         stage6_ms = max(1, int((time.perf_counter() - t_ev_start) * 1000))

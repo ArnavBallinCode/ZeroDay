@@ -26,6 +26,7 @@ class QueryPlan(BaseModel):
     limit: int = Field(default=20, ge=1, le=200)
     assumptions: list[str] = Field(default_factory=list)
     clarification: str | None = None
+    suggested_questions: list[str] = Field(default_factory=list)
 
     @field_validator("dimensions", "metrics")
     @classmethod

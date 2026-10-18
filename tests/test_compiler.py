@@ -37,6 +37,25 @@ def test_rejects_unknown_model_field(compiler: QueryCompiler) -> None:
         compiler.compile(plan)
 
 
+def test_text_filter_case(compiler: QueryCompiler) -> None:
+    query = compiler.compile(QueryPlan(metrics=['revenue'], filters=[
+        Filter(field='nation_name', operator='eq', value='Vietnam')]))
+    assert 'UPPER(NATION.N_NAME) = %s' in query.sql
+    assert query.parameters == ('VIETNAM',)
+
+
+def test_year_rejects_date(compiler: QueryCompiler) -> None:
+    with pytest.raises(InvalidPlan, match='numeric years'):
+        compiler.compile(QueryPlan(metrics=['revenue'], filters=[
+            Filter(field='order_year', operator='gte', value='2021-01-01')]))
+
+
+def test_year_binding(compiler: QueryCompiler) -> None:
+    query = compiler.compile(QueryPlan(metrics=['order_count'], filters=[
+        Filter(field='order_year', operator='eq', value='1995')]))
+    assert query.parameters == (1995,)
+
+
 def test_rejects_unbounded_in_list(compiler: QueryCompiler) -> None:
     plan = QueryPlan(
         metrics=["order_count"],

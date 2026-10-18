@@ -36,15 +36,16 @@ def deterministic_summary(plan: QueryPlan, result: QueryResult) -> tuple[str, li
         claims.append(EvidenceClaim(text=text, row_indexes=[0], columns=result.columns))
         return text, claims
 
-    first = result.rows[0]
-    parts = [
-        f"{column.replace('_', ' ')}: {render_value(value)}"
-        for column, value in zip(result.columns, first, strict=True)
-    ]
-    order_note = "Top result" if plan.sort else "First returned result"
-    summary = f"{order_note} — " + "; ".join(parts) + f". {len(result.rows)} rows returned."
-    claims.append(EvidenceClaim(text=summary, row_indexes=[0], columns=result.columns))
-    return summary, claims
+    lines = []
+    for index, row in enumerate(result.rows[:5]):
+        parts = [f"{column.replace('_', ' ')}: {render_value(value)}"
+                 for column, value in zip(result.columns, row, strict=True)]
+        text = f"{index + 1}. " + '; '.join(parts) + '.'
+        lines.append(text)
+        claims.append(EvidenceClaim(text=text, row_indexes=[index], columns=result.columns))
+    if len(result.rows) > 5:
+        lines.append(f'{len(result.rows)} rows returned; showing the first five here.')
+    return '\n'.join(lines), claims
 
 
 def verify_sentence_grounding(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from datetime import date
 from typing import Any
 
 from datamind.core.catalog import SemanticCatalog
@@ -82,18 +83,40 @@ class QueryCompiler:
 
     def _compile_filter(self, item: Filter, parameters: list[Any]) -> str:
         expression = self.catalog.field(item.field).expression
+        if item.operator == 'in' and (
+            not isinstance(item.value, list) or not 1 <= len(item.value) <= 100
+        ):
+            raise InvalidPlan('An in filter requires 1-100 values')
+        values = item.value if isinstance(item.value, list) else [item.value]
+        if item.field.endswith('_year'):
+            if any(isinstance(v, bool) or not str(v).isdigit() or len(str(v)) != 4 for v in values):
+                raise InvalidPlan(f'{item.field} requires four-digit numeric years, not dates')
+            values = [int(v) for v in values]
+        elif item.field.endswith(('_date', '_month')):
+            try:
+                values = [date.fromisoformat(str(v)).isoformat() for v in values]
+            except ValueError as exc:
+                raise InvalidPlan(f'{item.field} requires ISO dates (YYYY-MM-DD)') from exc
+        elif item.field in self.catalog.dimensions:
+            if any(not isinstance(v, str) for v in values):
+                raise InvalidPlan(f'{item.field} requires text values')
+            # Human names and categorical labels should match independently of casing.
+            expression = f'UPPER({expression})'
+            values = [v.strip().upper() for v in values]
         if item.operator in OPERATORS:
-            parameters.append(item.value)
+            if isinstance(item.value, list):
+                raise InvalidPlan('A scalar comparison requires one value')
+            parameters.append(values[0])
             return f"{expression} {OPERATORS[item.operator]} %s"
         if item.operator == "between":
             if not isinstance(item.value, list) or len(item.value) != 2:
                 raise InvalidPlan("A between filter requires exactly two values")
-            parameters.extend(item.value)
+            parameters.extend(values)
             return f"{expression} BETWEEN %s AND %s"
         if item.operator == "in":
             if not isinstance(item.value, list) or not item.value or len(item.value) > 100:
                 raise InvalidPlan("An in filter requires 1-100 values")
-            parameters.extend(item.value)
+            parameters.extend(values)
             return f"{expression} IN ({', '.join(['%s'] * len(item.value))})"
         raise InvalidPlan(f"Unsupported filter operator: {item.operator}")
 

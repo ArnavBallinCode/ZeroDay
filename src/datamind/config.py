@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     snowflake_schema: str = "TPCH_SF1"
     snowflake_role: str = "DATAMIND_READER"
     ollama_base_url: str = "http://127.0.0.1:11434"
-    gemma_model: str = "gemma4:e4b"
+    gemma_model: str = "gemma2:2b"
     max_result_rows: int = Field(default=200, ge=1, le=1000)
     statement_timeout_seconds: int = Field(default=30, ge=5, le=120)
 

@@ -17,6 +17,8 @@ suite, and `datamind demo-mutation` for the live answer-mutation proof.
 
 ## Key Verified Demonstrations
 
+Reliability update (2026-10-18): targeted live checks on Ollama `gemma2:2b` cover case-insensitive Vietnam revenue, explicit year ranges, relative latest-available years with live coverage evidence, ranking follow-ups, and segment counts. Query IDs and limitations are recorded in PLAN.md. This does not certify the full benchmark on the smaller model. Seeded chat proof has been removed; each new answer must produce real Snowflake evidence.
+
 1. **Four-table live join**: Queried LINEITEM, ORDERS, CUSTOMER, and NATION; query ID `01c7ce8d-000e-16a4-0000-0002b856b259`.
 2. **Ground-truth benchmark**: 25 diverse questions in `evals/ground_truth.json` asserting Snowflake results against baselines with delta tolerance.
 3. **Live data mutation proof**: `datamind demo-mutation` proves answers change when data changes in Snowflake (+94,770 orders across query IDs `01c7cf06-000e-16b8-0002-b8560001c066` and `01c7cf06-000e-16b8-0002-b8560001c06a`).

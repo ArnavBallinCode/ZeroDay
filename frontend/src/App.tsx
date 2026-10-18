@@ -318,7 +318,7 @@ function QueryNode({ data }: NodeProps<Node<{
   )
 }
 
-// 3. PLANNER NODE (Google Gemma 4 E4B AST)
+// 3. PLANNER NODE (Google Gemma E4B AST)
 function PlannerNode({ data }: NodeProps<Node<{
   status: 'idle' | 'active' | 'done'
   model: string
@@ -340,7 +340,7 @@ function PlannerNode({ data }: NodeProps<Node<{
         <div className="node-header-row">
           <div>
             <h3>Planner</h3>
-            <p className="node-subtitle">Google Gemma 4 (GPU)</p>
+            <p className="node-subtitle">Google Gemma (GPU)</p>
           </div>
           <div className="node-type-icon violet">
             <Bot size={15} />
@@ -353,7 +353,7 @@ function PlannerNode({ data }: NodeProps<Node<{
         </div>
 
         <div className="node-tag">
-          {data.model || 'gemma4:e4b'} · MLX GPU · Temp 0
+          {data.model || 'gemma2:2b'} · Ollama · Temp 0
         </div>
 
         {data.status === 'done' && (
@@ -567,7 +567,7 @@ function ResultNode({ data }: NodeProps<Node<{
         {data.status === 'loading' && (
           <div className="result-loading">
             <Loader2 size={22} className="spin" />
-            <span>Gemma 4 synthesizing grounded answer…</span>
+            <span>Gemma synthesizing grounded answer…</span>
           </div>
         )}
 
@@ -612,443 +612,6 @@ const nodeTypes = {
   resultNode: ResultNode,
 }
 
-const seedExecutionTrace1: ExecutionStageTrace[] = [
-  {
-    stage_number: 1,
-    id: 'stage_1_planner',
-    title: 'Google Gemma 4 Semantic Planning',
-    component: 'Google Gemma 4 (gemma4:e4b)',
-    description: 'Maps natural language question to semantic catalog dimensions, metrics, filters, and sort order without generating SQL.',
-    status: 'passed',
-    elapsed_ms: 1240,
-    input_payload: {
-      question: 'Which five customer nations generated the most revenue in 1995?',
-      semantic_model: 'tpch',
-      available_dimensions: ['nation_name', 'customer_segment', 'order_priority'],
-      available_metrics: ['revenue', 'order_count'],
-    },
-    output_payload: {
-      plan_json: {
-        dataset: 'tpch',
-        dimensions: ['nation_name'],
-        metrics: ['revenue'],
-        filters: [{ field: 'order_date', operator: 'between', value: ['1995-01-01', '1995-12-31'] }],
-        sort: [{ field: 'revenue', direction: 'desc' }],
-        limit: 5,
-        assumptions: ['Customer nation interpreted as C_NATIONKEY'],
-      },
-    },
-    explanation: 'Gemma mapped "customer nations" -> nation_name, "revenue" -> metric revenue, "in 1995" -> filter order_date between 1995-01-01 and 1995-12-31, and top five -> sort revenue desc limit 5.',
-  },
-  {
-    stage_number: 2,
-    id: 'stage_2_pydantic',
-    title: 'Pydantic Schema Validation Gate',
-    component: 'QueryPlan Pydantic Validator',
-    description: 'Validates generated plan JSON against catalog types, dimensions, metrics, and multi-turn conversation memory.',
-    status: 'passed',
-    elapsed_ms: 2,
-    input_payload: {
-      raw_json_keys: ['dataset', 'dimensions', 'metrics', 'filters', 'sort', 'limit'],
-      catalog_dimensions: ['nation_name', 'customer_name', 'customer_segment'],
-      catalog_metrics: ['revenue', 'order_count'],
-    },
-    output_payload: {
-      validated: true,
-      inherited_from_turn: false,
-      dimensions: ['nation_name'],
-      metrics: ['revenue'],
-    },
-    explanation: 'Validated strictly conforming QueryPlan schema. All requested dimensions and metrics exist in the active catalog. No multi-turn fallback required.',
-  },
-  {
-    stage_number: 3,
-    id: 'stage_3_compiler',
-    title: 'Deterministic Query Compiler & Join Path',
-    component: 'DataMind QueryCompiler (Dijkstra Join Graph)',
-    description: 'Resolves shortest join path across 4 tables, binds literal parameters (%s), and builds deterministic SELECT SQL.',
-    status: 'passed',
-    elapsed_ms: 4,
-    input_payload: {
-      required_tables: ['LINEITEM', 'ORDERS', 'CUSTOMER', 'NATION'],
-      join_graph_edges: 7,
-    },
-    output_payload: {
-      join_path: 'LINEITEM ⟶ ORDERS ⟶ CUSTOMER ⟶ NATION',
-      parameterized_sql: 'SELECT NATION.N_NAME AS "nation_name", SUM(...) FROM ... WHERE ORDERS.O_ORDERDATE BETWEEN %s AND %s GROUP BY NATION.N_NAME ORDER BY "revenue" DESC LIMIT 5',
-      bound_parameters: ['1995-01-01', '1995-12-31'],
-      parameter_count: 2,
-    },
-    explanation: 'Discovered optimal 4-table join path: LINEITEM -> ORDERS -> CUSTOMER -> NATION. Replaced all date literals with bound query parameters to eliminate SQL injection.',
-  },
-  {
-    stage_number: 4,
-    id: 'stage_4_ast_guardrails',
-    title: 'Read-Only AST & Security Firewall',
-    component: 'sqlglot Parser & Table Allowlist Guard',
-    description: 'Parses compiled SQL AST, verifies semantic-model table allowlist, and enforces Zero-Mutation policy.',
-    status: 'passed',
-    elapsed_ms: 3,
-    input_payload: {
-      sql_length: 448,
-      allowed_tables: ['CUSTOMER', 'LINEITEM', 'NATION', 'ORDERS', 'PART', 'PARTSUPP', 'REGION', 'SUPPLIER'],
-      strict_mode: true,
-    },
-    output_payload: {
-      passed: true,
-      ast_root_type: 'Select',
-      tables_detected: ['CUSTOMER', 'LINEITEM', 'NATION', 'ORDERS'],
-      joins_count: 3,
-      violations: [],
-    },
-    explanation: 'Verified strictly 1 SELECT statement, zero data-changing AST nodes (no INSERT, UPDATE, DELETE, DROP), allowlisted tables only, and zero SQL injection patterns.',
-  },
-  {
-    stage_number: 5,
-    id: 'stage_5_snowflake',
-    title: 'Snowflake Live Execution & Telemetry',
-    component: 'Snowflake Cloud Warehouse (DATAMIND_WH)',
-    description: 'Executes bound query on Snowflake warehouse; records Query ID, rows returned, and warehouse compute telemetry.',
-    status: 'passed',
-    elapsed_ms: 3120,
-    input_payload: {
-      warehouse: 'DATAMIND_WH',
-      role: 'DATAMIND_READER',
-      query_tag: 'datamind:interactive:v0.1',
-      parameters: ['1995-01-01', '1995-12-31'],
-    },
-    output_payload: {
-      query_id: '01c7ce8d-000e-16a4-0000-0002b856b259',
-      rows_count: 5,
-      columns: ['nation_name', 'revenue'],
-      elapsed_ms: 3120,
-      bytes_scanned: 118489088,
-      partitions_scanned: 150,
-      credits_used: 0.000043,
-      cache_hit: false,
-    },
-    explanation: 'Executed against live Snowflake warehouse DATAMIND_WH in 3,120ms. Captured immutable Query ID 01c7ce8d-000e-16a4-0000-0002b856b259 over 5 result rows.',
-  },
-  {
-    stage_number: 6,
-    id: 'stage_6_evidence',
-    title: 'Evidence Verification & Sentence-Level Grounding',
-    component: 'Deterministic Headline & Grounding Parser',
-    description: 'Derives headline directly from row 0; verifies Gemma explanation sentence-by-sentence against returned rows.',
-    status: 'passed',
-    elapsed_ms: 18,
-    input_payload: {
-      candidate_explanation: 'Indonesia generated the highest revenue in 1995 with $54,189,234.21, followed by Vietnam and China.',
-      raw_rows_count: 5,
-    },
-    output_payload: {
-      deterministic_summary: 'Top result — nation name: INDONESIA; revenue: 54,189,234.21. 5 rows returned.',
-      grounded_sentences_count: 2,
-      total_sentences: 2,
-      matched_row_indexes: [0, 1, 2],
-    },
-    explanation: 'Derived deterministic headline from row 0. Scanned 2 explanation sentences: 2 grounded directly to Snowflake row indices.',
-  },
-  {
-    stage_number: 7,
-    id: 'stage_7_envelope',
-    title: 'Answer Envelope & Provenance Packaging',
-    component: 'DataMind React Flow DAG & Decision Receipts',
-    description: 'Packages complete AnswerEnvelope with full execution trace, bound parameters, cryptographic proof, and interactive receipts.',
-    status: 'passed',
-    elapsed_ms: 1,
-    input_payload: { total_pipeline_time_ms: 4388 },
-    output_payload: {
-      question: 'Which five customer nations generated the most revenue in 1995?',
-      query_id: '01c7ce8d-000e-16a4-0000-0002b856b259',
-      total_stages_recorded: 7,
-      receipt_hash: 'sha256:4f3a9e...01c7ce8d',
-    },
-    explanation: 'Complete AnswerEnvelope packaged with full intermediate stage traceability, ready for interactive DAG visualization and audit receipt export.',
-  },
-]
-
-const seedExecutionTrace2: ExecutionStageTrace[] = [
-  {
-    stage_number: 1,
-    id: 'stage_1_planner',
-    title: 'Google Gemma 4 Semantic Planning',
-    component: 'Google Gemma 4 (gemma4:e4b)',
-    description: 'Maps natural language question to semantic catalog dimensions, metrics, filters, and sort order without generating SQL.',
-    status: 'passed',
-    elapsed_ms: 1120,
-    input_payload: {
-      question: 'How many orders did each market segment place?',
-      semantic_model: 'tpch',
-      available_dimensions: ['customer_segment', 'nation_name'],
-      available_metrics: ['order_count', 'revenue'],
-    },
-    output_payload: {
-      plan_json: {
-        dataset: 'tpch',
-        dimensions: ['customer_segment'],
-        metrics: ['order_count'],
-        filters: [],
-        sort: [],
-        limit: 100,
-        assumptions: [],
-      },
-    },
-    explanation: 'Gemma mapped "market segment" -> customer_segment and "how many orders" -> order_count (COUNT(DISTINCT O_ORDERKEY)).',
-  },
-  {
-    stage_number: 2,
-    id: 'stage_2_pydantic',
-    title: 'Pydantic Schema Validation Gate',
-    component: 'QueryPlan Pydantic Validator',
-    description: 'Validates generated plan JSON against catalog types, dimensions, metrics, and multi-turn conversation memory.',
-    status: 'passed',
-    elapsed_ms: 2,
-    input_payload: {
-      raw_json_keys: ['dataset', 'dimensions', 'metrics', 'filters', 'sort', 'limit'],
-      catalog_dimensions: ['customer_segment'],
-      catalog_metrics: ['order_count'],
-    },
-    output_payload: {
-      validated: true,
-      inherited_from_turn: false,
-      dimensions: ['customer_segment'],
-      metrics: ['order_count'],
-    },
-    explanation: 'Strict QueryPlan contract validated. Customer segment dimension and order count metric verified against catalog schema.',
-  },
-  {
-    stage_number: 3,
-    id: 'stage_3_compiler',
-    title: 'Deterministic Query Compiler & Join Path',
-    component: 'DataMind QueryCompiler (Dijkstra Join Graph)',
-    description: 'Resolves shortest join path across 2 tables, binds literal parameters (%s), and builds deterministic SELECT SQL.',
-    status: 'passed',
-    elapsed_ms: 3,
-    input_payload: {
-      required_tables: ['ORDERS', 'CUSTOMER'],
-      join_graph_edges: 7,
-    },
-    output_payload: {
-      join_path: 'ORDERS ⟶ CUSTOMER',
-      parameterized_sql: 'SELECT CUSTOMER.C_MKTSEGMENT AS "customer_segment", COUNT(DISTINCT ORDERS.O_ORDERKEY) AS "order_count" FROM ... ORDERS JOIN CUSTOMER ON ORDERS.O_CUSTKEY = CUSTOMER.C_CUSTKEY GROUP BY CUSTOMER.C_MKTSEGMENT LIMIT 100',
-      bound_parameters: [],
-      parameter_count: 0,
-    },
-    explanation: 'Discovered direct foreign key join between ORDERS and CUSTOMER (O_CUSTKEY = C_CUSTKEY). Deterministic aggregation generated.',
-  },
-  {
-    stage_number: 4,
-    id: 'stage_4_ast_guardrails',
-    title: 'Read-Only AST & Security Firewall',
-    component: 'sqlglot Parser & Table Allowlist Guard',
-    description: 'Parses compiled SQL AST, verifies semantic-model table allowlist, and enforces Zero-Mutation policy.',
-    status: 'passed',
-    elapsed_ms: 2,
-    input_payload: {
-      sql_length: 290,
-      allowed_tables: ['CUSTOMER', 'LINEITEM', 'NATION', 'ORDERS', 'PART', 'PARTSUPP', 'REGION', 'SUPPLIER'],
-      strict_mode: true,
-    },
-    output_payload: {
-      passed: true,
-      ast_root_type: 'Select',
-      tables_detected: ['CUSTOMER', 'ORDERS'],
-      joins_count: 1,
-      violations: [],
-    },
-    explanation: 'Verified strictly 1 SELECT statement, zero data-changing AST nodes (no INSERT, UPDATE, DELETE, DROP), and allowlisted tables only.',
-  },
-  {
-    stage_number: 5,
-    id: 'stage_5_snowflake',
-    title: 'Snowflake Live Execution & Telemetry',
-    component: 'Snowflake Cloud Warehouse (DATAMIND_WH)',
-    description: 'Executes bound query on Snowflake warehouse; records Query ID, rows returned, and warehouse compute telemetry.',
-    status: 'passed',
-    elapsed_ms: 2889,
-    input_payload: {
-      warehouse: 'DATAMIND_WH',
-      role: 'DATAMIND_READER',
-      query_tag: 'datamind:interactive:v0.1',
-      parameters: [],
-    },
-    output_payload: {
-      query_id: '01c7ce9e-000e-16a4-0000-0002b856b27d',
-      rows_count: 5,
-      columns: ['customer_segment', 'order_count'],
-      elapsed_ms: 2889,
-      bytes_scanned: 43253760,
-      partitions_scanned: 50,
-      credits_used: 0.000031,
-      cache_hit: false,
-    },
-    explanation: 'Executed against live Snowflake warehouse DATAMIND_WH in 2,889ms. Computed order distribution across 1.5M orders.',
-  },
-  {
-    stage_number: 6,
-    id: 'stage_6_evidence',
-    title: 'Evidence Verification & Sentence-Level Grounding',
-    component: 'Deterministic Headline & Grounding Parser',
-    description: 'Derives headline directly from row 0; verifies Gemma explanation sentence-by-sentence against returned rows.',
-    status: 'passed',
-    elapsed_ms: 12,
-    input_payload: {
-      candidate_explanation: 'The order_count metric was calculated and grouped by customer_segment dimension using the tpch dataset.',
-      raw_rows_count: 5,
-    },
-    output_payload: {
-      deterministic_summary: 'First returned result — customer segment: HOUSEHOLD; order count: 300,147. 5 rows returned.',
-      grounded_sentences_count: 1,
-      total_sentences: 1,
-      matched_row_indexes: [0],
-    },
-    explanation: 'Derived deterministic headline from row 0. Explanation verified against raw returned rows.',
-  },
-  {
-    stage_number: 7,
-    id: 'stage_7_envelope',
-    title: 'Answer Envelope & Provenance Packaging',
-    component: 'DataMind React Flow DAG & Decision Receipts',
-    description: 'Packages complete AnswerEnvelope with full execution trace, bound parameters, cryptographic proof, and interactive receipts.',
-    status: 'passed',
-    elapsed_ms: 1,
-    input_payload: { total_pipeline_time_ms: 4026 },
-    output_payload: {
-      question: 'How many orders did each market segment place?',
-      query_id: '01c7ce9e-000e-16a4-0000-0002b856b27d',
-      total_stages_recorded: 7,
-      receipt_hash: 'sha256:7b1e8a...01c7ce9e',
-    },
-    explanation: 'Complete AnswerEnvelope packaged with full intermediate stage traceability, ready for interactive DAG visualization and audit receipt export.',
-  },
-]
-
-// ============================================================================
-// INITIAL SEEDED HISTORY & PROOF
-// ============================================================================
-
-const initialHistory: RunHistoryItem[] = [
-  {
-    id: 'seed-1',
-    timestamp: '2026-10-18T12:14:35Z',
-    question: 'Which five customer nations generated the most revenue in 1995?',
-    status: 'verified',
-    dataset: 'tpch',
-    query_id: '01c7ce8d-000e-16a4-0000-0002b856b259',
-    elapsed_ms: 3120,
-    rows_count: 5,
-    warehouse: 'DATAMIND_WH',
-    answer: {
-      question: 'Which five customer nations generated the most revenue in 1995?',
-      summary: 'Top 5 customer nations in 1995: Indonesia ($54.19M), Vietnam ($53.47M), China ($52.68M), India ($52.54M), Iran ($51.52M).',
-      explanation: 'Joined LINEITEM, ORDERS, CUSTOMER, and NATION tables with date filter between 1995-01-01 and 1995-12-31, grouped by customer nation and ranked by total discounted revenue.',
-      plan: {
-        dataset: 'tpch',
-        dimensions: ['nation_name'],
-        metrics: ['revenue'],
-        filters: [{ field: 'order_date', operator: 'between', value: ['1995-01-01', '1995-12-31'] }],
-        sort: [{ field: 'revenue', direction: 'desc' }],
-        limit: 5,
-        assumptions: ['Customer nation interpreted as C_NATIONKEY'],
-      },
-      query: {
-        sql: `SELECT
-  NATION.N_NAME AS "nation_name",
-  SUM(LINEITEM.L_EXTENDEDPRICE * (1 - LINEITEM.L_DISCOUNT)) AS "revenue"
-FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1.LINEITEM AS LINEITEM
-JOIN SNOWFLAKE_SAMPLE_DATA.TPCH_SF1.ORDERS AS ORDERS ON LINEITEM.L_ORDERKEY = ORDERS.O_ORDERKEY
-JOIN SNOWFLAKE_SAMPLE_DATA.TPCH_SF1.CUSTOMER AS CUSTOMER ON ORDERS.O_CUSTKEY = CUSTOMER.C_CUSTKEY
-JOIN SNOWFLAKE_SAMPLE_DATA.TPCH_SF1.NATION AS NATION ON CUSTOMER.C_NATIONKEY = NATION.N_NATIONKEY
-WHERE ORDERS.O_ORDERDATE BETWEEN '1995-01-01' AND '1995-12-31'
-GROUP BY NATION.N_NAME
-ORDER BY "revenue" DESC
-LIMIT 5`,
-        parameters: [],
-        tables: ['LINEITEM', 'ORDERS', 'CUSTOMER', 'NATION'],
-        selected_fields: ['nation_name', 'revenue'],
-      },
-      result: {
-        query_id: '01c7ce8d-000e-16a4-0000-0002b856b259',
-        columns: ['nation_name', 'revenue'],
-        rows: [
-          ['INDONESIA', 54189234.21],
-          ['VIETNAM', 53472190.87],
-          ['CHINA', 52684391.12],
-          ['INDIA', 52540982.44],
-          ['IRAN', 51523049.03],
-        ],
-        elapsed_ms: 3120,
-        warehouse: 'DATAMIND_WH',
-        role: 'DATAMIND_READER',
-        executed_at: '2026-10-18T06:44:35Z',
-      },
-      claims: [
-        { text: 'Indonesia ranked first with $54.19M in revenue', row_indexes: [0], columns: ['nation_name', 'revenue'] },
-        { text: 'Vietnam ranked second with $53.47M', row_indexes: [1], columns: ['nation_name', 'revenue'] },
-      ],
-      limitations: [],
-      execution_trace: seedExecutionTrace1,
-    },
-  },
-  {
-    id: 'seed-2',
-    timestamp: '2026-10-18T12:24:30Z',
-    question: 'How many orders did each market segment place?',
-    status: 'verified',
-    dataset: 'tpch',
-    query_id: '01c7ce9e-000e-16a4-0000-0002b856b27d',
-    elapsed_ms: 2889,
-    rows_count: 5,
-    warehouse: 'DATAMIND_WH',
-    answer: {
-      question: 'How many orders did each market segment place?',
-      summary: 'First returned result — customer segment: HOUSEHOLD; order count: 300,147. 5 rows returned.',
-      explanation: 'The order_count metric was calculated and grouped by the customer_segment dimension using the tpch dataset.',
-      plan: {
-        dataset: 'tpch',
-        dimensions: ['customer_segment'],
-        metrics: ['order_count'],
-        filters: [],
-        sort: [],
-        limit: 100,
-        assumptions: [],
-      },
-      query: {
-        sql: `SELECT
-  CUSTOMER.C_MKTSEGMENT AS "customer_segment",
-  COUNT(DISTINCT ORDERS.O_ORDERKEY) AS "order_count"
-FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1.ORDERS AS ORDERS
-JOIN SNOWFLAKE_SAMPLE_DATA.TPCH_SF1.CUSTOMER AS CUSTOMER ON ORDERS.O_CUSTKEY = CUSTOMER.C_CUSTKEY
-GROUP BY CUSTOMER.C_MKTSEGMENT
-LIMIT 100`,
-        parameters: [],
-        tables: ['ORDERS', 'CUSTOMER'],
-        selected_fields: ['customer_segment', 'order_count'],
-      },
-      result: {
-        query_id: '01c7ce9e-000e-16a4-0000-0002b856b27d',
-        columns: ['customer_segment', 'order_count'],
-        rows: [
-          ['HOUSEHOLD', 300147],
-          ['MACHINERY', 298980],
-          ['BUILDING', 303959],
-          ['FURNITURE', 299461],
-          ['AUTOMOBILE', 297453],
-        ],
-        elapsed_ms: 2889,
-        warehouse: 'DATAMIND_WH',
-        role: 'DATAMIND_READER',
-        executed_at: '2026-10-18T06:54:30Z',
-      },
-      claims: [
-        { text: 'Building had the highest volume with 303,959 orders', row_indexes: [2], columns: ['customer_segment', 'order_count'] },
-      ],
-      limitations: [],
-      execution_trace: seedExecutionTrace2,
-    },
-  },
-]
 
 const initialPipelineNodes: Node[] = [
   {
@@ -1084,13 +647,13 @@ const initialPipelineNodes: Node[] = [
     type: 'plannerNode',
     position: { x: 670, y: 35 },
     data: {
-      status: 'done',
-      model: 'gemma4:e4b',
+      status: 'idle',
+      model: 'gemma2:2b',
       metricsCount: 1,
       dimsCount: 1,
       onInspect: () => {},
-      plan: initialHistory[0].answer?.plan,
-      stages: seedExecutionTrace1,
+      plan: undefined,
+      stages: [],
       onInspectTrace: () => {},
     },
   },
@@ -1099,7 +662,7 @@ const initialPipelineNodes: Node[] = [
     type: 'safetyNode',
     position: { x: 670, y: 275 },
     data: {
-      status: 'verified',
+      status: 'idle',
       onInspect: () => {},
     },
   },
@@ -1108,11 +671,11 @@ const initialPipelineNodes: Node[] = [
     type: 'snowflakeNode',
     position: { x: 990, y: 155 },
     data: {
-      status: 'done',
-      queryId: '01c7ce8d-000e-16a4-0000-0002b856b259',
+      status: 'idle',
+      queryId: undefined,
       warehouse: 'DATAMIND_WH',
-      elapsedMs: 3120,
-      rowsCount: 5,
+      elapsedMs: 0,
+      rowsCount: 0,
       onInspect: () => {},
     },
   },
@@ -1121,8 +684,8 @@ const initialPipelineNodes: Node[] = [
     type: 'resultNode',
     position: { x: 1310, y: 120 },
     data: {
-      answer: initialHistory[0].answer,
-      status: 'done',
+      answer: null,
+      status: 'idle',
       onExpand: () => {},
       onCopy: () => {},
     },
@@ -1386,7 +949,7 @@ export default function App() {
   const [queryText, setQueryText] = useState('Which five customer nations generated the most revenue in 1995?')
   const [topK, setTopK] = useState(5)
   const [executionStatus, setExecutionStatus] = useState<'idle' | 'querying' | 'success' | 'error'>('idle')
-  const [answer, setAnswer] = useState<Answer | null>(initialHistory[0].answer || null)
+  const [answer, setAnswer] = useState<Answer | null>(null)
   const [activeModalTab, setActiveModalTab] = useState<'summary' | 'table' | 'sql' | 'trace'>('summary')
   const [expandModalOpen, setExpandModalOpen] = useState(false)
   const [traceModalOpen, setTraceModalOpen] = useState(false)
@@ -1401,9 +964,6 @@ export default function App() {
     if (answer?.execution_trace && answer.execution_trace.length > 0) {
       return answer.execution_trace
     }
-    if (initialHistory[0].answer?.execution_trace && initialHistory[0].answer.execution_trace.length > 0) {
-      return initialHistory[0].answer.execution_trace
-    }
     return []
   }, [answer])
 
@@ -1411,7 +971,7 @@ export default function App() {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false)
   const [engineSettings, setEngineSettings] = useState<EngineSettings | null>(null)
   const [editGemmaTemp, setEditGemmaTemp] = useState(0.0)
-  const [editGemmaModel, setEditGemmaModel] = useState('gemma4:e4b')
+  const [editGemmaModel, setEditGemmaModel] = useState('gemma2:2b')
   const [editGemmaTimeout, setEditGemmaTimeout] = useState(300)
   const [editSnowflakeWh, setEditSnowflakeWh] = useState('DATAMIND_WH')
   const [editStatementTimeout, setEditStatementTimeout] = useState(60)
@@ -1454,10 +1014,10 @@ export default function App() {
   const [receiptFilter, setReceiptFilter] = useState<'all' | 'verified' | 'blocked'>('all')
   const [history, setHistory] = useState<RunHistoryItem[]>(() => {
     try {
-      const stored = localStorage.getItem('datamind_receipts')
-      return stored ? JSON.parse(stored) : initialHistory
+      const stored = localStorage.getItem('datamind_live_receipts')
+      return stored ? JSON.parse(stored) : []
     } catch {
-      return initialHistory
+      return []
     }
   })
 
@@ -1466,28 +1026,8 @@ export default function App() {
     {
       id: 'msg-1',
       role: 'assistant',
-      content: 'Welcome to **DataMind**. I answer natural language questions using live computation in **Snowflake**, with semantic planning handled by **Google Gemma 4**. Ask a question or use the Pipeline workbench to see every stage executed live.',
+      content: 'Welcome to **DataMind**. I answer natural language questions using live computation in **Snowflake**, with semantic planning handled by **Google Gemma**. Ask a question or use the Pipeline workbench to see every stage executed live.',
       timestamp: '12:00 PM',
-    },
-    {
-      id: 'msg-2',
-      role: 'user',
-      content: 'Which five customer nations generated the most revenue in 1995?',
-      timestamp: '12:14 PM',
-    },
-    {
-      id: 'msg-3',
-      role: 'assistant',
-      content: initialHistory[0].answer!.summary,
-      timestamp: '12:14 PM',
-      answer: initialHistory[0].answer,
-      steps: [
-        { id: '1', name: 'NL Intent', detail: 'Target nation_name and revenue', status: 'done', elapsed_ms: 120 },
-        { id: '2', name: 'Gemma 4 Planner', detail: 'Constrained QueryPlan JSON', status: 'done', elapsed_ms: 980 },
-        { id: '3', name: 'Safety Gate', detail: '1-SELECT · Allowlist verified', status: 'done', elapsed_ms: 15 },
-        { id: '4', name: 'Snowflake Live', detail: 'DATAMIND_WH · 01c7ce8d…', status: 'done', elapsed_ms: 3120 },
-        { id: '5', name: 'Evidence Ledger', detail: '5 rows verified', status: 'done', elapsed_ms: 450 },
-      ],
     },
   ])
   const [chatInput, setChatInput] = useState('')
@@ -1779,7 +1319,7 @@ metrics:
   // Persist receipts
   useEffect(() => {
     try {
-      localStorage.setItem('datamind_receipts', JSON.stringify(history))
+      localStorage.setItem('datamind_live_receipts', JSON.stringify(history))
     } catch (e) {
       console.warn('Could not persist receipts to localStorage:', e)
     }
@@ -1823,14 +1363,14 @@ metrics:
             ...n,
             data: {
               status: executionStatus === 'querying' && stageProgress < 50 ? 'active' : answer ? 'done' : 'idle',
-              model: engineSettings?.gemma.model || status?.gemma.model || 'gemma4:e4b',
+              model: engineSettings?.gemma.model || status?.gemma.model || 'gemma2:2b',
               metricsCount: answer?.plan.metrics.length ?? 0,
               dimsCount: answer?.plan.dimensions.length ?? 0,
               onInspect: () => {
                 setActiveModalTab('trace')
                 setExpandModalOpen(true)
               },
-              plan: answer?.plan || initialHistory[0].answer?.plan,
+              plan: answer?.plan,
               stages: activeExecutionTrace,
               onInspectTrace: (idx?: number) => {
                 setSelectedStageIdx(idx ?? 0)
@@ -1843,7 +1383,7 @@ metrics:
           return {
             ...n,
             data: {
-              status: executionStatus === 'error' ? 'blocked' : answer ? 'verified' : 'idle',
+              status: answer ? 'verified' : 'idle',
               onInspect: () => setActiveTab('guardrails'),
             },
           }
@@ -1997,8 +1537,8 @@ metrics:
         status: 'pending',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         steps: [
-          { id: '1', name: 'NL Intent', detail: 'Parsing intent with Gemma 4', status: 'active' },
-          { id: '2', name: 'Gemma 4 Planner', detail: 'Awaiting schema plan', status: 'pending' },
+          { id: '1', name: 'NL Intent', detail: 'Parsing intent with Gemma', status: 'active' },
+          { id: '2', name: 'Gemma Planner', detail: 'Awaiting schema plan', status: 'pending' },
           { id: '3', name: 'Safety Gate', detail: 'Validating single SELECT and table allowlist', status: 'pending' },
           { id: '4', name: 'Snowflake Compute', detail: 'Executing query on DATAMIND_WH', status: 'pending' },
           { id: '5', name: 'Evidence Ledger', detail: 'Generating row-grounded proof', status: 'pending' },
@@ -2020,7 +1560,9 @@ metrics:
       const response = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: query, context: [] }),
+        body: JSON.stringify({ question: query,
+          context: chatMessages.filter(m => m.role === 'user').slice(-3).map(m => m.content),
+          previous_plan: answer?.plan.dataset === activeDatasetId ? answer.plan : null }),
       })
       const payload = await response.json()
 
@@ -2029,10 +1571,81 @@ metrics:
       clearInterval(timerInterval)
 
       if (!response.ok) {
+        const detail = payload?.detail
+        if (detail && typeof detail === 'object' && detail.type === 'clarification') {
+          setStageProgress(100)
+          setCurrentStepIndex(1)
+          setExecutionStatus('idle')
+          setChatMessages((prev) =>
+            prev.map((m) =>
+              m.id === asstId
+                ? {
+                    ...m,
+                    content: detail.question || 'Could you please clarify your request?',
+                    status: 'clarification',
+                    clarificationOptions: detail.options || [],
+                    steps: [
+                      { id: '1', name: 'NL Intent Parsing', detail: 'Parsed user question', status: 'done', elapsed_ms: 60 },
+                      { id: '2', name: 'Gemma Semantic Planner', detail: 'Detected ambiguity — clarification needed', status: 'done', elapsed_ms: 320 },
+                    ],
+                  }
+                : m
+            )
+          )
+          const newReceipt: RunHistoryItem = {
+            id: 'rcpt-' + Date.now().toString(36),
+            timestamp: new Date().toISOString(),
+            question: query,
+            status: 'clarification',
+            dataset: activeDatasetId,
+            query_id: 'CLARIFICATION_NEEDED',
+            elapsed_ms: 380,
+            rows_count: 0,
+            warehouse: 'DATAMIND_WH',
+          }
+          setHistory((prev) => [newReceipt, ...prev])
+          return
+        }
+
+        if (detail && typeof detail === 'object' && detail.type === 'blocked') {
+          setStageProgress(100)
+          setCurrentStepIndex(2)
+          setExecutionStatus('error')
+          setChatMessages((prev) =>
+            prev.map((m) =>
+              m.id === asstId
+                ? {
+                    ...m,
+                    content: detail.message || 'Execution blocked by security policy.',
+                    status: 'blocked',
+                    error: detail.message,
+                    steps: [
+                      { id: '1', name: 'NL Intent Parsing', detail: 'Parsed user request', status: 'done', elapsed_ms: 40 },
+                      { id: '2', name: 'Safety Guardrail Gate', detail: 'REJECTED: AST Policy Violation', status: 'done', elapsed_ms: 15 },
+                    ],
+                  }
+                : m
+            )
+          )
+          const newReceipt: RunHistoryItem = {
+            id: 'rcpt-' + Date.now().toString(36),
+            timestamp: new Date().toISOString(),
+            question: query,
+            status: 'blocked',
+            dataset: activeDatasetId,
+            query_id: 'POLICY_BLOCKED',
+            elapsed_ms: 55,
+            rows_count: 0,
+            warehouse: 'DATAMIND_WH',
+          }
+          setHistory((prev) => [newReceipt, ...prev])
+          return
+        }
+
         throw new Error(
           typeof payload.detail === 'string'
             ? payload.detail
-            : payload.detail?.question || 'The verified query could not run.'
+            : payload.detail?.question || payload.detail?.message || 'The verified query could not run.'
         )
       }
 
@@ -2057,7 +1670,7 @@ metrics:
                 answer: payload,
                 steps: [
                   { id: '1', name: 'NL Intent', detail: `Dataset: ${payload.plan.dataset}`, status: 'done', elapsed_ms: 120 },
-                  { id: '2', name: 'Gemma 4 Planner', detail: `${payload.plan.metrics.length} metrics, ${payload.plan.dimensions.length} dims`, status: 'done', elapsed_ms: 890 },
+                  { id: '2', name: 'Gemma Planner', detail: `${payload.plan.metrics.length} metrics, ${payload.plan.dimensions.length} dims`, status: 'done', elapsed_ms: 890 },
                   { id: '3', name: 'Safety Gate', detail: '1-SELECT · Allowlist verified', status: 'done', elapsed_ms: 15 },
                   { id: '4', name: 'Snowflake Compute', detail: `${payload.result.warehouse} · ${payload.result.query_id.slice(0, 16)}…`, status: 'done', elapsed_ms: payload.result.elapsed_ms },
                   { id: '5', name: 'Evidence Ledger', detail: `${payload.result.rows.length} rows verified`, status: 'done', elapsed_ms: 380 },
@@ -2093,9 +1706,12 @@ metrics:
           m.id === asstId
             ? {
                 ...m,
-                content: `**Safety Stop**: ${msg}`,
+                content: msg,
                 status: 'error',
                 error: msg,
+                steps: [
+                  { id: '1', name: 'Execution Interrupted', detail: msg.slice(0, 80), status: 'done', elapsed_ms: 40 },
+                ],
               }
             : m
         )
@@ -2106,7 +1722,7 @@ metrics:
         id: 'rcpt-' + Date.now().toString(36),
         timestamp: new Date().toISOString(),
         question: query,
-        status: isBlocked ? 'blocked' : 'clarification',
+        status: isBlocked ? 'blocked' : 'error',
         dataset: activeDatasetId,
         query_id: isBlocked ? 'POLICY_BLOCKED' : 'FAILED',
         elapsed_ms: 24,
@@ -2119,7 +1735,8 @@ metrics:
 
   // Open Snowflake inspector modal
   function openSnowflakeInspector(qid?: string) {
-    setInspectedQueryId(qid || answer?.result.query_id || '01c7ce8d-000e-16a4-0000-0002b856b259')
+    if (!qid && !answer?.result.query_id) return
+    setInspectedQueryId(qid || answer!.result.query_id)
     setSnowflakeModalOpen(true)
   }
 
@@ -2384,7 +2001,7 @@ metrics:
             </div>
             <div className="telemetry-item">
               <span className={`status-dot ${status?.gemma.ready ? 'ready' : ''}`} />
-              <span>Gemma 4: {engineSettings?.gemma.model || status?.gemma.model || 'gemma4:e4b'} (GPU)</span>
+              <span>Gemma: {engineSettings?.gemma.model || status?.gemma.model || 'gemma2:2b'} (GPU)</span>
             </div>
           </div>
         </div>
@@ -2488,7 +2105,7 @@ metrics:
                 <ChevronRight size={11} className="stepper-arrow" />
                 <div className={`stepper-stage-pill ${currentStepIndex >= 1 ? (currentStepIndex === 1 && executionStatus === 'querying' ? 'active' : 'done') : ''}`}>
                   <span className="stage-num">2</span>
-                  <span>Gemma 4 Plan</span>
+                  <span>Gemma Plan</span>
                 </div>
                 <ChevronRight size={11} className="stepper-arrow" />
                 <div className={`stepper-stage-pill ${currentStepIndex >= 2 ? (currentStepIndex === 2 && executionStatus === 'querying' ? 'active' : 'done') : ''}`}>
@@ -2612,20 +2229,54 @@ metrics:
                     </div>
                     <div className="message-content">
                       {msg.role === 'assistant' && msg.steps && (
-                        <details className="chat-thought-process" open={msg.status === 'pending'}>
-                          <summary>
-                            <Sparkles size={12} color="var(--accent-primary)" />
-                            <span>
-                              {msg.status === 'pending'
-                                ? 'Reasoning with Gemma 4 & executing on Snowflake…'
-                                : 'Verified Execution Pipeline (5 stages)'}
-                            </span>
-                            {msg.status === 'pending' && <Loader2 size={12} className="spin" />}
+                        <details className="chat-thought-process" open={msg.status === 'pending' || msg.status === 'clarification' || msg.status === 'blocked'}>
+                          <summary className={`summary-${msg.status || 'default'}`}>
+                            {msg.status === 'clarification' ? (
+                              <>
+                                <AlertTriangle size={12} color="var(--accent-amber, #f59e0b)" />
+                                <span style={{ color: 'var(--accent-amber, #f59e0b)', fontWeight: 600 }}>
+                                  Ambiguity Detected — Clarification Needed
+                                </span>
+                              </>
+                            ) : msg.status === 'blocked' ? (
+                              <>
+                                <ShieldAlert size={12} color="#f87171" />
+                                <span style={{ color: '#f87171', fontWeight: 600 }}>
+                                  Blocked by Safety Guardrail (AST Policy)
+                                </span>
+                              </>
+                            ) : msg.status === 'error' ? (
+                              <>
+                                <XCircle size={12} color="#f87171" />
+                                <span style={{ color: '#f87171', fontWeight: 600 }}>
+                                  Query Execution Halted
+                                </span>
+                              </>
+                            ) : msg.status === 'pending' ? (
+                              <>
+                                <Sparkles size={12} color="var(--accent-primary)" />
+                                <span>Reasoning with Gemma &amp; executing on Snowflake…</span>
+                                <Loader2 size={12} className="spin" />
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles size={12} color="var(--accent-primary)" />
+                                <span>Verified Execution Pipeline (5 stages)</span>
+                              </>
+                            )}
                           </summary>
                           <div className="thought-steps-content">
                             {msg.steps.map((st) => (
                               <div key={st.id} className={`thought-step-item ${st.status}`}>
-                                {st.status === 'done' && <Check size={11} color="var(--accent-emerald)" />}
+                                {st.status === 'done' && (
+                                  msg.status === 'blocked' ? (
+                                    <ShieldAlert size={11} color="#f87171" />
+                                  ) : msg.status === 'clarification' ? (
+                                    <AlertTriangle size={11} color="var(--accent-amber, #f59e0b)" />
+                                  ) : (
+                                    <Check size={11} color="var(--accent-emerald)" />
+                                  )
+                                )}
                                 {st.status === 'active' && <Loader2 size={11} className="spin" color="var(--accent-primary)" />}
                                 {st.status === 'pending' && <CircleDot size={11} color="var(--text-muted)" />}
                                 <div>
@@ -2638,11 +2289,35 @@ metrics:
                         </details>
                       )}
 
-                      <div className="message-bubble">
+                      <div className={`message-bubble ${msg.status ? `message-status-${msg.status}` : ''}`}>
                         {msg.role === 'assistant' ? (
                           <FormattedMarkdown content={msg.content} />
                         ) : (
                           msg.content
+                        )}
+
+                        {msg.status === 'clarification' && msg.clarificationOptions && msg.clarificationOptions.length > 0 && (
+                          <div className="clarification-options-box">
+                            <div className="clarification-options-title">
+                              <Sparkles size={13} color="var(--accent-amber, #f59e0b)" />
+                              <span>Suggested resolution options (click to run):</span>
+                            </div>
+                            <div className="clarification-chips-grid">
+                              {msg.clarificationOptions.map((opt, optIdx) => (
+                                <button
+                                  key={optIdx}
+                                  type="button"
+                                  className="clarification-option-chip"
+                                  onClick={() => {
+                                    executePipeline(opt)
+                                  }}
+                                >
+                                  <Play size={10} style={{ marginRight: 6, fill: 'currentColor' }} />
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
 
@@ -4339,7 +4014,7 @@ metrics:
                   <div className="settings-section">
                     <span className="settings-section-title">
                       <Bot size={14} color="var(--accent-violet)" />
-                      Google Gemma 4 Reasoning Parameters
+                      Google Gemma Reasoning Parameters
                     </span>
 
                     <div className="setting-row">
