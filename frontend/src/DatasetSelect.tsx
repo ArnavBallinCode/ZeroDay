@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronsUpDown,
   Database,
-  Layers3,
   Plus,
   Sparkles,
 } from 'lucide-react'

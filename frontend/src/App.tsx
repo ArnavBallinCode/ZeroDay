@@ -75,6 +75,7 @@ import {
 
 import {
   Answer,
+  BenchmarkItemResult,
   BenchmarkSuiteResult,
   ChatMessage,
   DatasetMeta,
@@ -755,7 +756,9 @@ export default function App() {
       const next = !prev
       try {
         localStorage.setItem('datamind_sidebar_pinned', String(next))
-      } catch {}
+      } catch {
+        // ignore localStorage errors in private browsing
+      }
       return next
     })
   }
@@ -2375,7 +2378,7 @@ metrics:
                   </tr>
                 </thead>
                 <tbody>
-                  {(benchmarkSuite ? benchmarkSuite.results : evalList).map((ec: any) => {
+                  {(benchmarkSuite ? benchmarkSuite.results : evalList).map((ec: EvalCase | BenchmarkItemResult) => {
                     const isSuiteItem = 'reason' in ec
                     const passed = isSuiteItem ? ec.passed : evalResults[ec.id]?.passed ?? (ec.sample_query_id ? true : false)
                     const qid = isSuiteItem ? ec.query_id : evalResults[ec.id]?.query_id || ec.sample_query_id
