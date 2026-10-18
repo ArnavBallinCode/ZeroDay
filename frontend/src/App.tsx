@@ -77,7 +77,6 @@ import {
   EngineSettings,
   EvalCase,
   EvalResult,
-  PipelineStep,
   RunHistoryItem,
   SemanticModelFull,
   SnowflakeExplainResult,
@@ -125,7 +124,7 @@ function isMonetaryColumn(colName: string = ''): boolean {
   return /revenue|price|cost|amount|sales|total|balance|val|spend/i.test(colName)
 }
 
-function formatAxisValue(val: any, isCurrency: boolean = false): string {
+function formatAxisValue(val: unknown, isCurrency: boolean = false): string {
   const num = typeof val === 'number' ? val : Number(val)
   if (isNaN(num)) return String(val ?? '')
   if (num === 0) return isCurrency ? '$0' : '0'
@@ -762,7 +761,13 @@ export default function App() {
   // Snowflake Studio state
   const [studioSql, setStudioSql] = useState('SELECT N_NAME, N_REGIONKEY FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1.NATION LIMIT 10')
   const [studioRunning, setStudioRunning] = useState(false)
-  const [studioResult, setStudioResult] = useState<any | null>(null)
+  const [studioResult, setStudioResult] = useState<{
+    columns: string[]
+    rows: (string | number | null)[][]
+    query_id?: string
+    elapsed_ms?: number
+    warehouse?: string
+  } | null>(null)
   const [studioExplainRunning, setStudioExplainRunning] = useState(false)
   const [studioExplainResult, setStudioExplainResult] = useState<SnowflakeExplainResult | null>(null)
   const [studioError, setStudioError] = useState('')
@@ -782,7 +787,7 @@ export default function App() {
 
   // React Flow state (DRAGGABLE & MOVABLE)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialPipelineNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialPipelineEdges)
+  const [edges, , onEdgesChange] = useEdgesState(initialPipelineEdges)
 
   // History & Receipts
   const [receiptFilter, setReceiptFilter] = useState<'all' | 'verified' | 'blocked'>('all')
@@ -912,7 +917,9 @@ metrics:
   useEffect(() => {
     try {
       localStorage.setItem('datamind_receipts', JSON.stringify(history))
-    } catch {}
+    } catch (e) {
+      console.warn('Could not persist receipts to localStorage:', e)
+    }
   }, [history])
 
   // Sync React Flow node data whenever props update, preserving node positions!
@@ -1052,7 +1059,9 @@ metrics:
         setDatasets(dRes)
         setSemanticModel(mRes)
       }
-    } catch {}
+    } catch (e) {
+      console.error('Failed to switch dataset:', e)
+    }
   }
 
   // Create custom dataset
@@ -1939,7 +1948,7 @@ metrics:
                       </tr>
                     </thead>
                     <tbody>
-                      {studioResult.rows.map((row: any[], ri: number) => (
+                      {studioResult.rows.map((row: (string | number | null)[], ri: number) => (
                         <tr key={ri}>
                           <td className="row-num">{ri + 1}</td>
                           {row.map((cell, ci) => (
@@ -2368,7 +2377,7 @@ metrics:
                                   color: '#f4f4f5',
                                 }}
                                 labelStyle={{ color: '#ffffff', fontWeight: 600, marginBottom: 4 }}
-                                formatter={(val: any) => [
+                                formatter={(val: unknown) => [
                                   formatAxisValue(val, isMonetaryColumn(selectedYAxis || '')) + (typeof val === 'number' && Math.abs(val) >= 1000 ? ` (${val.toLocaleString()})` : ''),
                                   selectedYAxis ? selectedYAxis.replaceAll('_', ' ') : 'Value'
                                 ]}
@@ -2414,7 +2423,7 @@ metrics:
                                   color: '#f4f4f5',
                                 }}
                                 labelStyle={{ color: '#ffffff', fontWeight: 600, marginBottom: 4 }}
-                                formatter={(val: any) => [
+                                formatter={(val: unknown) => [
                                   formatAxisValue(val, isMonetaryColumn(selectedYAxis || '')) + (typeof val === 'number' && Math.abs(val) >= 1000 ? ` (${val.toLocaleString()})` : ''),
                                   selectedYAxis ? selectedYAxis.replaceAll('_', ' ') : 'Value'
                                 ]}
@@ -2468,7 +2477,7 @@ metrics:
                                   color: '#f4f4f5',
                                 }}
                                 labelStyle={{ color: '#ffffff', fontWeight: 600, marginBottom: 4 }}
-                                formatter={(val: any) => [
+                                formatter={(val: unknown) => [
                                   formatAxisValue(val, isMonetaryColumn(selectedYAxis || '')) + (typeof val === 'number' && Math.abs(val) >= 1000 ? ` (${val.toLocaleString()})` : ''),
                                   selectedYAxis ? selectedYAxis.replaceAll('_', ' ') : 'Value'
                                 ]}

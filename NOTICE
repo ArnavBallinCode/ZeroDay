@@ -1,0 +1,18 @@
+DataMind
+Copyright (c) 2026 DataMind Contributors
+
+Licensed under the MIT License.
+
+This project integrates or depends on the following open-source software:
+
+- Google Gemma: Open-weights language models developed by Google DeepMind
+  (Gemma Terms of Use: https://ai.google.dev/gemma/terms)
+- Snowflake Connector for Python: Snowflake Inc. (Apache License 2.0)
+- SQLGlot: SQL parser and transpiler (MIT License)
+- FastAPI: Modern, fast web framework for Python (MIT License)
+- Uvicorn: The lightning-fast ASGI server (BSD-3-Clause)
+- Pydantic: Data validation using Python type annotations (MIT License)
+- React & React DOM: Facebook, Inc. and its affiliates (MIT License)
+- React Flow (@xyflow/react): Interactive node-based diagramming (MIT License)
+- Lucide React: Lucide icon family (ISC License)
+- Recharts: Composable charting library built on React components (MIT License)

@@ -8,7 +8,35 @@ version = "0.1.0"
 description = "A verifiable natural-language data agent powered by Snowflake and Google Gemma"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
-license = {text = "Apache-2.0"}
+license = {text = "MIT"}
+authors = [
+  {name = "DataMind Contributors"}
+]
+maintainers = [
+  {name = "DataMind Maintainers"}
+]
+keywords = [
+  "snowflake",
+  "google-gemma",
+  "data-agent",
+  "semantic-layer",
+  "natural-language-to-sql",
+  "verifiable-ai",
+  "hacktoberfest",
+  "open-source"
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Database :: Front-Ends",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
 dependencies = [
   "fastapi==0.143.3",
   "httpx==0.28.1",
@@ -26,6 +54,14 @@ dev = [
   "pytest-cov==7.1.0",
   "ruff==0.17.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ArnavBallinCode/ZeroDay"
+Repository = "https://github.com/ArnavBallinCode/ZeroDay.git"
+Issues = "https://github.com/ArnavBallinCode/ZeroDay/issues"
+Discussions = "https://github.com/ArnavBallinCode/ZeroDay/discussions"
+Documentation = "https://github.com/ArnavBallinCode/ZeroDay#readme"
+Changelog = "https://github.com/ArnavBallinCode/ZeroDay/blob/main/CHANGELOG.md"
 
 [project.scripts]
 datamind = "datamind.cli:main"

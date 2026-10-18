@@ -1,43 +1,67 @@
-name: quality
+name: CI Quality Gate
 
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
   backend:
+    name: Backend (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.3.0
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev --python 3.13
-      - name: Lint
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev --python ${{ matrix.python-version }}
+
+      - name: Lint with Ruff
         run: uv run ruff check src tests
-      - name: Test
-        run: uv run pytest
+
+      - name: Run Test Suite with Coverage
+        run: uv run pytest --cov=datamind --cov-report=xml
 
   frontend:
+    name: Frontend (React & TypeScript)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
       - name: Install frontend dependencies
         run: npm ci
-      - name: Lint
+
+      - name: Lint frontend
         run: npm run lint
-      - name: Build
+
+      - name: Build frontend for production
         run: npm run build

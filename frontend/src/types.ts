@@ -31,6 +31,13 @@ export type Claim = {
   columns: string[]
 }
 
+export type SentenceGrounding = {
+  sentence: string
+  grounded: boolean
+  matched_values: string[]
+  matched_row_indexes: number[]
+}
+
 export type Answer = {
   question: string
   summary: string
@@ -50,9 +57,60 @@ export type Answer = {
     warehouse: string
     role?: string
     executed_at?: string
+    bytes_scanned?: number
+    partitions_scanned?: number
+    credits_used?: number
+    cache_hit?: boolean
   }
   claims?: Claim[]
+  sentence_grounding?: SentenceGrounding[]
   limitations: string[]
+}
+
+export type MutationProofResult = {
+  mode: string
+  table: string
+  question: string
+  initial_value: number
+  initial_metric?: number
+  initial_query_id: string
+  initial_window?: string
+  mutation_event: string
+  mutation_query_id?: string
+  mutated_value: number
+  mutated_metric?: number
+  mutated_query_id: string
+  mutated_window?: string
+  delta: number
+  metric_delta?: number
+  verified: boolean
+  timestamp: number
+}
+
+export type BenchmarkItemResult = {
+  id: string
+  question: string
+  category: string
+  status: 'passed' | 'failed' | 'warning'
+  passed: boolean
+  query_id?: string
+  rows_count?: number
+  summary?: string
+  tables?: string[]
+  elapsed_ms: number
+  credits_used?: number
+  reason: string
+}
+
+export type BenchmarkSuiteResult = {
+  total_cases: number
+  passed_cases: number
+  failed_cases: number
+  accuracy_percent: number
+  total_elapsed_ms: number
+  avg_latency_ms: number
+  category_summary: Record<string, { total: number; passed: number }>
+  results: BenchmarkItemResult[]
 }
 
 export type DatasetMeta = {

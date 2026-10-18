@@ -9,7 +9,7 @@
 | M5 inspectable evidence | SQL, parameters, rows, tables, Snowflake query ID | Implemented |
 | M6 ambiguity and missing data | Planner clarification contract and explicit zero-row response | Implemented, evaluation pending |
 | M7 Snowflake and Gemma | Local Gemma 4 planned; Snowflake computed a real four-table result | Verified |
-| M8 reproducible open source | Apache-2.0, pinned environment, setup script, tests, architecture | Implemented |
+| M8 reproducible open source | MIT license, pinned environment, setup script, tests, architecture | Implemented |
 
 The repository also includes `datamind doctor` for environment verification and `datamind smoke`
 for a real end-to-end evidence-producing run. The first verified smoke run queried LINEITEM, ORDERS,

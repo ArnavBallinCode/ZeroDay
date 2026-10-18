@@ -1,5 +1,12 @@
 # DataMind
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python: 3.11 | 3.12 | 3.13](https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![CI Quality Gate](https://github.com/ArnavBallinCode/ZeroDay/actions/workflows/ci.yml/badge.svg)](https://github.com/ArnavBallinCode/ZeroDay/actions/workflows/ci.yml)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Hacktoberfest](https://img.shields.io/badge/Hacktoberfest-2026-orange.svg)](https://hacktoberfest.com/)
+
 **Ask your Snowflake data a question. Get an answer with receipts.**
 
 DataMind is an open-source, verifiable natural-language data agent for ZeroDay OSS Hacktoberfest
@@ -123,6 +130,17 @@ executor, evidence envelope, or UI.
 Environment variables are documented in [`.env.example`](.env.example). The defaults use
 `SNOWFLAKE_SAMPLE_DATA.TPCH_SF1`, an X-Small warehouse, the read-only role, and local `gemma4:e4b`.
 
+## Community and open-source resources
+
+We welcome all contributions, ideas, and feedback! Please explore these resources:
+
+- [Contributing Guide](CONTRIBUTING.md): Setup instructions, architecture invariants, and PR guidelines.
+- [Code of Conduct](CODE_OF_CONDUCT.md): Contributor Covenant v2.1 community standards.
+- [Security Policy](SECURITY.md): Vulnerability reporting procedures, threat model, and safe harbor.
+- [Support and FAQ](SUPPORT.md): Troubleshooting guides, discussions, and FAQ.
+- [Changelog](CHANGELOG.md): Release history and upcoming roadmap.
+- [Citation Information](CITATION.cff): CFF metadata for academic and technical attribution.
+
 ## Architecture and rubric evidence
 
 - [Architecture and trust boundary](docs/ARCHITECTURE.md)
@@ -131,14 +149,14 @@ Environment variables are documented in [`.env.example`](.env.example). The defa
 - [Snowflake keyless setup and verification](docs/SNOWFLAKE_SETUP.md)
 - [Normalized participant-guide requirements](docs/PROBLEM_STATEMENT.md)
 - [Living implementation plan](PLAN.md)
-- [Contribution guide](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
 
 The main technical contribution is a constrained semantic-plan boundary between an open-weight
 language model and a cloud data warehouse, paired with a portable evidence envelope that preserves
 claim-to-query-to-row traceability.
 
 ## Troubleshooting
+
+See [SUPPORT.md](SUPPORT.md) for full diagnostic and troubleshooting steps. Quick checks:
 
 **Gemma shows offline.** Run `ollama list`, confirm `gemma4:e4b` exists, then start `ollama serve`.
 
@@ -163,4 +181,5 @@ Snowsight, add the Snowflake sample data from Data Products, then rerun the gran
 
 ## License
 
-Apache License 2.0. Snowflake sample data is not included or redistributed.
+This project is licensed under the [MIT License](LICENSE). Snowflake sample data is not included or redistributed.
+

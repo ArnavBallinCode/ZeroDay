@@ -14,13 +14,14 @@ from datamind.config import Settings
 from datamind.core.agent import DataMindAgent, NeedsClarification
 from datamind.core.catalog import SemanticCatalog
 from datamind.core.compiler import InvalidPlan
-from datamind.core.models import AnswerEnvelope, CompiledQuery
+from datamind.core.models import AnswerEnvelope, CompiledQuery, QueryPlan
 from datamind.core.safety import UnsafeQuery
 
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=500)
-    context: list[str] = Field(default_factory=list, max_length=3)
+    context: list[str] = Field(default_factory=list, max_length=10)
+    previous_plan: QueryPlan | None = None
 
 
 class DatasetSelectRequest(BaseModel):
@@ -430,10 +431,38 @@ def ask(payload: AskRequest) -> AnswerEnvelope:
     if not planner.health():
         raise HTTPException(503, f"Local Gemma model {settings.gemma_model} is not available.")
     try:
-        return agent.ask(payload.question, payload.context)
+        return agent.ask(payload.question, payload.context, payload.previous_plan)
     except NeedsClarification as exc:
         raise HTTPException(422, {"type": "clarification", "question": str(exc)}) from exc
     except (InvalidPlan, GemmaUnavailable) as exc:
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(502, f"The verified query could not complete: {exc}") from exc
+
+
+@app.get("/api/benchmark/cases")
+def get_benchmark_cases() -> list[dict[str, Any]]:
+    path = Path("evals/ground_truth.json")
+    if not path.exists():
+        return []
+    import json
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+@app.post("/api/benchmark/run")
+def run_benchmark() -> dict[str, Any]:
+    if not settings.snowflake_ready:
+        raise HTTPException(503, "Snowflake is not configured.")
+    if not planner.health():
+        raise HTTPException(503, f"Local Gemma model {settings.gemma_model} is not available.")
+    from datamind.core.benchmark import run_benchmark_suite
+    return run_benchmark_suite(agent)
+
+
+@app.post("/api/mutation/run")
+def run_mutation() -> dict[str, Any]:
+    if not settings.snowflake_ready:
+        raise HTTPException(503, "Snowflake is not configured.")
+    from datamind.core.mutation import run_live_data_mutation_proof
+    return run_live_data_mutation_proof(executor, settings)

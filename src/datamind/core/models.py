@@ -50,11 +50,23 @@ class QueryResult(BaseModel):
     warehouse: str
     role: str
     executed_at: datetime
+    bytes_scanned: int = 0
+    partitions_scanned: int = 0
+    credits_used: float = 0.0
+    cache_hit: bool = False
+
 
 class EvidenceClaim(BaseModel):
     text: str
     row_indexes: list[int]
     columns: list[str]
+
+
+class SentenceGrounding(BaseModel):
+    sentence: str
+    grounded: bool
+    matched_values: list[str] = Field(default_factory=list)
+    matched_row_indexes: list[int] = Field(default_factory=list)
 
 
 class AnswerEnvelope(BaseModel):
@@ -65,4 +77,5 @@ class AnswerEnvelope(BaseModel):
     result: QueryResult
     claims: list[EvidenceClaim]
     explanation: str
+    sentence_grounding: list[SentenceGrounding] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)

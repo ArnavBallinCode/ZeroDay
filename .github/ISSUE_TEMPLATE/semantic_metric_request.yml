@@ -1,0 +1,41 @@
+name: "New Semantic Metric or Dimension"
+description: "Propose a new business metric, dimension, or dataset table for DataMind's semantic model"
+title: "[Metric]: "
+labels: ["semantic-model", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        DataMind uses a declarative semantic model in `config/semantic_model.yaml` to ensure verifiable queries over Snowflake data.
+  - type: input
+    id: metric_name
+    attributes:
+      label: Metric Name / Identifier
+      placeholder: e.g. average_discount_rate
+    validations:
+      required: true
+  - type: textarea
+    id: business_definition
+    attributes:
+      label: Business Definition & Description
+      placeholder: Explain what this metric represents and the questions it answers.
+    validations:
+      required: true
+  - type: textarea
+    id: sql_expression
+    attributes:
+      label: SQL Expression & Source Table
+      placeholder: |
+        Table: lineitem
+        Expression: AVG(l_discount)
+    validations:
+      required: true
+  - type: textarea
+    id: sample_questions
+    attributes:
+      label: Example Natural-Language Questions
+      placeholder: |
+        - "What was the average discount rate for orders shipped in 1995?"
+        - "Which suppliers gave the highest average discount?"
+    validations:
+      required: true

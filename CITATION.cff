@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use DataMind in your research or applications, please cite it using the following metadata."
+title: "DataMind: A Verifiable Natural-Language Data Agent Powered by Snowflake and Google Gemma"
+authors:
+  - name: "DataMind Contributors"
+version: 0.1.0
+date-released: 2026-10-18
+url: "https://github.com/ArnavBallinCode/ZeroDay"
+license: "MIT"
+keywords:
+  - "snowflake"
+  - "google-gemma"
+  - "natural-language-to-sql"
+  - "semantic-layer"
+  - "data-agent"
+  - "verifiable-ai"
+  - "hacktoberfest"
+  - "open-source"
+abstract: >-
+  DataMind is an open-source, verifiable natural-language data agent developed
+  for ZeroDay OSS Hacktoberfest 2026. It pairs Google Gemma for semantic intent
+  extraction with a deterministic SQL compiler and Snowflake execution engine,
+  producing end-to-end auditability and cryptographically backed query receipts.
