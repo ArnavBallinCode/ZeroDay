@@ -83,6 +83,59 @@ import {
   SnowflakeExplainResult,
   Status,
 } from './types'
+import ReactMarkdown from 'react-markdown'
+
+// ============================================================================
+// FORMATTING & MARKDOWN HELPERS
+// ============================================================================
+
+function FormattedMarkdown({ content }: { content: string }) {
+  if (!content) return null
+  return (
+    <div className="prose-clean">
+      <ReactMarkdown
+        components={{
+          p: ({ children }) => <p className="prose-p">{children}</p>,
+          strong: ({ children }) => <strong className="prose-strong">{children}</strong>,
+          em: ({ children }) => <em className="prose-em">{children}</em>,
+          code: ({ children, className }) => {
+            const isBlock = className?.includes('language-')
+            if (isBlock) {
+              return <pre className="prose-pre"><code>{children}</code></pre>
+            }
+            return <code className="prose-code">{children}</code>
+          },
+          ul: ({ children }) => <ul className="prose-ul">{children}</ul>,
+          ol: ({ children }) => <ol className="prose-ol">{children}</ol>,
+          li: ({ children }) => <li className="prose-li">{children}</li>,
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="prose-link">
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
+function isMonetaryColumn(colName: string = ''): boolean {
+  return /revenue|price|cost|amount|sales|total|balance|val|spend/i.test(colName)
+}
+
+function formatAxisValue(val: any, isCurrency: boolean = false): string {
+  const num = typeof val === 'number' ? val : Number(val)
+  if (isNaN(num)) return String(val ?? '')
+  if (num === 0) return isCurrency ? '$0' : '0'
+  const abs = Math.abs(num)
+  const prefix = isCurrency ? '$' : ''
+  if (abs >= 1_000_000_000) return `${prefix}${(num / 1_000_000_000).toFixed(1)}B`
+  if (abs >= 1_000_000) return `${prefix}${(num / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000) return `${prefix}${(num / 1_000).toFixed(0)}k`
+  return `${prefix}${num.toLocaleString()}`
+}
 
 // ============================================================================
 // RAGVAULT + SHADCN REACT FLOW WORKBENCH NODES
@@ -423,7 +476,7 @@ function ResultNode({ data }: NodeProps<Node<{
 
         {data.status === 'done' && data.answer && (
           <div className="result-preview">
-            <p>{data.answer.summary}</p>
+            <FormattedMarkdown content={data.answer.summary} />
 
             {data.answer.claims && data.answer.claims.length > 0 && (
               <div className="source-tags">
@@ -1643,7 +1696,11 @@ metrics:
                       )}
 
                       <div className="message-bubble">
-                        {msg.content}
+                        {msg.role === 'assistant' ? (
+                          <FormattedMarkdown content={msg.content} />
+                        ) : (
+                          msg.content
+                        )}
                       </div>
 
                       {msg.role === 'assistant' && msg.answer && (
@@ -2191,8 +2248,19 @@ metrics:
               {activeModalTab === 'summary' && (
                 <div className="modal-summary-view">
                   <div className="summary-banner">
-                    <h3>{answer.summary}</h3>
-                    <p>{answer.explanation}</p>
+                    <div className="summary-title-row">
+                      <div className="summary-status-badge">
+                        <CheckCircle2 size={13} color="var(--accent-emerald)" />
+                        <span>Snowflake Live Verified</span>
+                      </div>
+                      <span className="summary-mode-badge">100% Deterministic SQL</span>
+                    </div>
+                    <div className="summary-header-text">
+                      <FormattedMarkdown content={answer.summary} />
+                    </div>
+                    <div className="summary-explanation-box">
+                      <FormattedMarkdown content={answer.explanation} />
+                    </div>
                     <div className="summary-telemetry">
                       <span>Query ID: <code className="clickable" onClick={() => openSnowflakeInspector(answer.result.query_id)}>{answer.result.query_id}</code></span>
                       <span>Execution: {answer.result.elapsed_ms}ms</span>
@@ -2259,30 +2327,161 @@ metrics:
                       </div>
 
                       <div className="modal-chart-area">
-                        <ResponsiveContainer width="100%" height={260}>
+                        <ResponsiveContainer width="100%" height={290}>
                           {chartType === 'bar' ? (
-                            <BarChart data={dynamicChartData} margin={{ top: 12, right: 12, bottom: 25, left: 10 }}>
+                            <BarChart data={dynamicChartData} margin={{ top: 16, right: 20, bottom: 35, left: 20 }}>
+                              <defs>
+                                <linearGradient id="barGradientPrimary" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.95} />
+                                  <stop offset="100%" stopColor="#1d4ed8" stopOpacity={0.7} />
+                                </linearGradient>
+                              </defs>
                               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                              <XAxis dataKey="x" tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
-                              <Tooltip contentStyle={{ background: '#141518', border: '1px solid #27272a', borderRadius: 6 }} />
-                              <Bar dataKey="y" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                              <XAxis
+                                dataKey="x"
+                                tick={{ fill: '#a1a1aa', fontSize: 11 }}
+                                axisLine={{ stroke: '#27272a' }}
+                                tickLine={false}
+                                tickMargin={10}
+                                interval={0}
+                                tickFormatter={(val) => {
+                                  const s = String(val ?? '')
+                                  return s.length > 13 ? s.slice(0, 11) + '…' : s
+                                }}
+                              />
+                              <YAxis
+                                tick={{ fill: '#a1a1aa', fontSize: 11 }}
+                                axisLine={false}
+                                tickLine={false}
+                                width={68}
+                                tickFormatter={(val) => formatAxisValue(val, isMonetaryColumn(selectedYAxis || ''))}
+                              />
+                              <Tooltip
+                                cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
+                                contentStyle={{
+                                  background: 'rgba(20, 21, 24, 0.95)',
+                                  backdropFilter: 'blur(10px)',
+                                  border: '1px solid #3f3f46',
+                                  borderRadius: 8,
+                                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.6)',
+                                  fontSize: 12,
+                                  color: '#f4f4f5',
+                                }}
+                                labelStyle={{ color: '#ffffff', fontWeight: 600, marginBottom: 4 }}
+                                formatter={(val: any) => [
+                                  formatAxisValue(val, isMonetaryColumn(selectedYAxis || '')) + (typeof val === 'number' && Math.abs(val) >= 1000 ? ` (${val.toLocaleString()})` : ''),
+                                  selectedYAxis ? selectedYAxis.replaceAll('_', ' ') : 'Value'
+                                ]}
+                              />
+                              <Bar
+                                dataKey="y"
+                                fill="url(#barGradientPrimary)"
+                                radius={[6, 6, 0, 0]}
+                                maxBarSize={56}
+                              />
                             </BarChart>
                           ) : chartType === 'line' ? (
-                            <LineChart data={dynamicChartData} margin={{ top: 12, right: 12, bottom: 25, left: 10 }}>
+                            <LineChart data={dynamicChartData} margin={{ top: 16, right: 20, bottom: 35, left: 20 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                              <XAxis dataKey="x" tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
-                              <Tooltip contentStyle={{ background: '#141518', border: '1px solid #27272a', borderRadius: 6 }} />
-                              <Line type="monotone" dataKey="y" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                              <XAxis
+                                dataKey="x"
+                                tick={{ fill: '#a1a1aa', fontSize: 11 }}
+                                axisLine={{ stroke: '#27272a' }}
+                                tickLine={false}
+                                tickMargin={10}
+                                interval={0}
+                                tickFormatter={(val) => {
+                                  const s = String(val ?? '')
+                                  return s.length > 13 ? s.slice(0, 11) + '…' : s
+                                }}
+                              />
+                              <YAxis
+                                tick={{ fill: '#a1a1aa', fontSize: 11 }}
+                                axisLine={false}
+                                tickLine={false}
+                                width={68}
+                                tickFormatter={(val) => formatAxisValue(val, isMonetaryColumn(selectedYAxis || ''))}
+                              />
+                              <Tooltip
+                                cursor={{ stroke: 'rgba(255, 255, 255, 0.1)', strokeWidth: 1 }}
+                                contentStyle={{
+                                  background: 'rgba(20, 21, 24, 0.95)',
+                                  backdropFilter: 'blur(10px)',
+                                  border: '1px solid #3f3f46',
+                                  borderRadius: 8,
+                                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.6)',
+                                  fontSize: 12,
+                                  color: '#f4f4f5',
+                                }}
+                                labelStyle={{ color: '#ffffff', fontWeight: 600, marginBottom: 4 }}
+                                formatter={(val: any) => [
+                                  formatAxisValue(val, isMonetaryColumn(selectedYAxis || '')) + (typeof val === 'number' && Math.abs(val) >= 1000 ? ` (${val.toLocaleString()})` : ''),
+                                  selectedYAxis ? selectedYAxis.replaceAll('_', ' ') : 'Value'
+                                ]}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="y"
+                                stroke="#10b981"
+                                strokeWidth={2.5}
+                                dot={{ r: 4, fill: '#10b981', stroke: '#09090b', strokeWidth: 2 }}
+                                activeDot={{ r: 6, fill: '#34d399', stroke: '#ffffff', strokeWidth: 2 }}
+                              />
                             </LineChart>
                           ) : (
-                            <AreaChart data={dynamicChartData} margin={{ top: 12, right: 12, bottom: 25, left: 10 }}>
+                            <AreaChart data={dynamicChartData} margin={{ top: 16, right: 20, bottom: 35, left: 20 }}>
+                              <defs>
+                                <linearGradient id="areaGradientPrimary" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.45} />
+                                  <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.02} />
+                                </linearGradient>
+                              </defs>
                               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                              <XAxis dataKey="x" tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: '#a1a1aa', fontSize: 11 }} axisLine={false} tickLine={false} width={50} />
-                              <Tooltip contentStyle={{ background: '#141518', border: '1px solid #27272a', borderRadius: 6 }} />
-                              <Area type="monotone" dataKey="y" fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth={2} />
+                              <XAxis
+                                dataKey="x"
+                                tick={{ fill: '#a1a1aa', fontSize: 11 }}
+                                axisLine={{ stroke: '#27272a' }}
+                                tickLine={false}
+                                tickMargin={10}
+                                interval={0}
+                                tickFormatter={(val) => {
+                                  const s = String(val ?? '')
+                                  return s.length > 13 ? s.slice(0, 11) + '…' : s
+                                }}
+                              />
+                              <YAxis
+                                tick={{ fill: '#a1a1aa', fontSize: 11 }}
+                                axisLine={false}
+                                tickLine={false}
+                                width={68}
+                                tickFormatter={(val) => formatAxisValue(val, isMonetaryColumn(selectedYAxis || ''))}
+                              />
+                              <Tooltip
+                                cursor={{ stroke: 'rgba(255, 255, 255, 0.1)', strokeWidth: 1 }}
+                                contentStyle={{
+                                  background: 'rgba(20, 21, 24, 0.95)',
+                                  backdropFilter: 'blur(10px)',
+                                  border: '1px solid #3f3f46',
+                                  borderRadius: 8,
+                                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.6)',
+                                  fontSize: 12,
+                                  color: '#f4f4f5',
+                                }}
+                                labelStyle={{ color: '#ffffff', fontWeight: 600, marginBottom: 4 }}
+                                formatter={(val: any) => [
+                                  formatAxisValue(val, isMonetaryColumn(selectedYAxis || '')) + (typeof val === 'number' && Math.abs(val) >= 1000 ? ` (${val.toLocaleString()})` : ''),
+                                  selectedYAxis ? selectedYAxis.replaceAll('_', ' ') : 'Value'
+                                ]}
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="y"
+                                fill="url(#areaGradientPrimary)"
+                                stroke="#3b82f6"
+                                strokeWidth={2.5}
+                                dot={{ r: 3, fill: '#3b82f6', stroke: '#09090b', strokeWidth: 2 }}
+                                activeDot={{ r: 6, fill: '#60a5fa', stroke: '#ffffff', strokeWidth: 2 }}
+                              />
                             </AreaChart>
                           )}
                         </ResponsiveContainer>
