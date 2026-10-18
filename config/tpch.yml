@@ -1,0 +1,132 @@
+name: tpch
+description: >-
+  TPC-H decision-support data. It covers customers, orders, line items, suppliers,
+  parts, nations, and regions. Monetary metrics use the benchmark's synthetic currency.
+database: SNOWFLAKE_SAMPLE_DATA
+schema: TPCH_SF1
+
+tables:
+  LINEITEM: {physical: LINEITEM, description: Individual order lines}
+  ORDERS: {physical: ORDERS, description: Customer orders}
+  CUSTOMER: {physical: CUSTOMER, description: Customers placing orders}
+  NATION: {physical: NATION, description: Customer and supplier nations}
+  REGION: {physical: REGION, description: Geographic regions}
+  SUPPLIER: {physical: SUPPLIER, description: Part suppliers}
+  PART: {physical: PART, description: Product catalog}
+  PARTSUPP: {physical: PARTSUPP, description: Supplier-part relationships}
+
+joins:
+  - {from: LINEITEM, to: ORDERS, "on": "LINEITEM.L_ORDERKEY = ORDERS.O_ORDERKEY"}
+  - {from: ORDERS, to: CUSTOMER, "on": "ORDERS.O_CUSTKEY = CUSTOMER.C_CUSTKEY"}
+  - {from: CUSTOMER, to: NATION, "on": "CUSTOMER.C_NATIONKEY = NATION.N_NATIONKEY"}
+  - {from: NATION, to: REGION, "on": "NATION.N_REGIONKEY = REGION.R_REGIONKEY"}
+  - {from: LINEITEM, to: SUPPLIER, "on": "LINEITEM.L_SUPPKEY = SUPPLIER.S_SUPPKEY"}
+  - {from: LINEITEM, to: PART, "on": "LINEITEM.L_PARTKEY = PART.P_PARTKEY"}
+  - {from: PART, to: PARTSUPP, "on": "PART.P_PARTKEY = PARTSUPP.PS_PARTKEY"}
+
+dimensions:
+  order_date:
+    table: ORDERS
+    expression: ORDERS.O_ORDERDATE
+    description: Date the order was placed
+  order_year:
+    table: ORDERS
+    expression: DATE_PART('YEAR', ORDERS.O_ORDERDATE)
+    description: Calendar year the order was placed
+  order_month:
+    table: ORDERS
+    expression: DATE_TRUNC('MONTH', ORDERS.O_ORDERDATE)
+    description: Calendar month the order was placed
+  order_status:
+    table: ORDERS
+    expression: ORDERS.O_ORDERSTATUS
+    description: Order status code
+  ship_date:
+    table: LINEITEM
+    expression: LINEITEM.L_SHIPDATE
+    description: Date the order line shipped
+  ship_mode:
+    table: LINEITEM
+    expression: LINEITEM.L_SHIPMODE
+    description: Shipping method
+  return_flag:
+    table: LINEITEM
+    expression: LINEITEM.L_RETURNFLAG
+    description: Return status flag
+  customer_name:
+    table: CUSTOMER
+    expression: CUSTOMER.C_NAME
+    description: Customer name
+  customer_segment:
+    table: CUSTOMER
+    expression: CUSTOMER.C_MKTSEGMENT
+    description: Customer market segment
+  nation_name:
+    table: NATION
+    expression: NATION.N_NAME
+    description: Customer nation name; unless supplier is explicitly requested
+  region_name:
+    table: REGION
+    expression: REGION.R_NAME
+    description: Customer geographic region
+  supplier_name:
+    table: SUPPLIER
+    expression: SUPPLIER.S_NAME
+    description: Supplier name
+  part_name:
+    table: PART
+    expression: PART.P_NAME
+    description: Product or part name
+  part_type:
+    table: PART
+    expression: PART.P_TYPE
+    description: Product or part type
+
+metrics:
+  revenue:
+    table: LINEITEM
+    expression: SUM(LINEITEM.L_EXTENDEDPRICE * (1 - LINEITEM.L_DISCOUNT))
+    description: Gross discounted revenue before tax
+  net_revenue:
+    table: LINEITEM
+    expression: SUM(LINEITEM.L_EXTENDEDPRICE * (1 - LINEITEM.L_DISCOUNT) * (1 + LINEITEM.L_TAX))
+    description: Discounted revenue including tax
+  order_count:
+    table: ORDERS
+    expression: COUNT(DISTINCT ORDERS.O_ORDERKEY)
+    description: Number of distinct orders
+  customer_count:
+    table: CUSTOMER
+    expression: COUNT(DISTINCT CUSTOMER.C_CUSTKEY)
+    description: Number of distinct customers
+  line_count:
+    table: LINEITEM
+    expression: COUNT(*)
+    description: Number of order line records
+  total_quantity:
+    table: LINEITEM
+    expression: SUM(LINEITEM.L_QUANTITY)
+    description: Total units ordered
+  average_discount:
+    table: LINEITEM
+    expression: AVG(LINEITEM.L_DISCOUNT)
+    description: Average discount rate from 0 to 1
+  average_order_value:
+    table: ORDERS
+    expression: AVG(ORDERS.O_TOTALPRICE)
+    description: Mean order total price
+  supply_cost:
+    table: PARTSUPP
+    expression: SUM(PARTSUPP.PS_SUPPLYCOST * PARTSUPP.PS_AVAILQTY)
+    description: Total catalog supply cost times available quantity
+
+examples:
+  - question: Which five customer nations generated the most revenue in 1995?
+    dimensions: [nation_name]
+    metrics: [revenue]
+    filters: [{field: order_date, operator: between, value: ["1995-01-01", "1995-12-31"]}]
+    sort: [{field: revenue, direction: desc}]
+    limit: 5
+  - question: How many orders did each market segment place?
+    dimensions: [customer_segment]
+    metrics: [order_count]

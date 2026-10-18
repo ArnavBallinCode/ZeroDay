@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "datamind"
+version = "0.1.0"
+description = "A verifiable natural-language data agent powered by Snowflake and Google Gemma"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = {text = "Apache-2.0"}
+dependencies = [
+  "fastapi==0.120.0",
+  "httpx==0.28.1",
+  "pydantic==2.12.3",
+  "pydantic-settings==2.11.0",
+  "pyyaml==6.0.3",
+  "snowflake-connector-python[secure-local-storage]==3.18.0",
+  "sqlglot==27.29.0",
+  "uvicorn[standard]==0.38.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.4.2",
+  "pytest-cov==7.0.0",
+  "ruff==0.14.2",
+]
+
+[project.scripts]
+datamind = "datamind.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/datamind"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [".venv", "tmp"]
