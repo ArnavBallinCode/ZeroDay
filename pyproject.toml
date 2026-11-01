@@ -44,7 +44,7 @@ dependencies = [
   "pydantic-settings==2.16.0",
   "pyyaml==6.0.3",
   "snowflake-connector-python==5.0.0",
-  "sqlglot==30.23.0",
+  "sqlglot==30.25.0",
   "uvicorn[standard]==0.54.0",
 
   "unilimit>=0.1.1",
